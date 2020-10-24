@@ -107,17 +107,17 @@ def export_tree(context):
             export_joint(context, joint, xml_model)
             
             print("looking at joint", joint.name, "with child", joint.sk_joint_child.name)
-            print("  time check", joint.sk_joint_child.sk_export_time, export_start_time)
+            print("  time check", joint.sk_joint_child['sk_export_time'], export_start_time)
             
-            if joint.sk_joint_child.sk_export_time != export_start_time:
+            if joint.sk_joint_child['sk_export_time'] != export_start_time:
                 # add to walk later
                 print("    adding", joint.sk_joint_child.name, "to search frontier")
                 link_frontier.append(joint.sk_joint_child)
                 
                 # mark link as visited so don't come back to it
-                joint.sk_joint_child.sk_export_time = export_start_time
+                joint.sk_joint_child['sk_export_time'] = export_start_time
                 
-                print("    time set", joint.sk_joint_child.sk_export_time, export_start_time)
+                print("    time set", joint.sk_joint_child['sk_export_time'], export_start_time)
                 
     print(xml_pretty(xml_root))
     
@@ -208,7 +208,7 @@ def register():
     bpy.types.Object.enum_joint_axis = bpy.props.EnumProperty(items=enum_joint_axis_options, options = {"ENUM_FLAG"}, default={'x'})
     bpy.types.Object.sk_joint_parent = bpy.props.PointerProperty(type=bpy.types.Object, name="sk_joint_parent", description="Simple Kinematics Joint Parent Object", update=None)
     bpy.types.Object.sk_joint_child = bpy.props.PointerProperty(type=bpy.types.Object, name="sk_joint_child", description="Simple Kinematics Joint Child Object", update=None)
-    bpy.types.Object.sk_export_time = bpy.props.FloatProperty(name='sk export time')
+    #bpy.types.Object.sk_export_time = bpy.props.FloatProperty(name='sk export time')
     bpy.utils.register_class(SDFExportOperator)
     bpy.utils.register_class(SimpleKinematicsJointPanel)
 
@@ -220,8 +220,7 @@ def unregister():
     del bpy.types.Object.enum_joint_axis
     del bpy.types.Object.sk_joint_parent
     del bpy.types.Object.sk_joint_child
-
-    del bpy.types.Object.sk_export_time
+    #del bpy.types.Object.sk_export_time
 
 
 if __name__ == "__main__":
