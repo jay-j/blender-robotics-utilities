@@ -16,8 +16,9 @@
 import bpy
 
 
-class SimpleKinematicsPanel(bpy.types.Panel):
-    """Creates a Panel in the Object properties window"""
+# this is the panel in the constraints window where you define joint information
+class SimpleKinematicsJointPanel(bpy.types.Panel):
+    """Creates a Panel in the Constraints properties window"""
     bl_label = "Simple Kinematics Joint Properties"
     bl_idname = "OBJECT_PT_simplekinematics"
     bl_space_type = 'PROPERTIES'
@@ -38,37 +39,54 @@ class SimpleKinematicsPanel(bpy.types.Panel):
         row = layout.row()
         row.prop(obj, "sk_joint_child")
     
-        # TODO need to detect property changes to the parent/child so they can be marked/unmarked rather than searching at runtime for them
+        # TODO better to detect property changes to the parent/child so they can be marked/unmarked rather than searching at export time for them
         
         row = layout.row()
         row.label(text="Joint Properties")
-        
+               
         row = layout.row()
-        row.label(text="Type: Revolute")
+        row.prop(obj, 'enum_joint_type', text='joint type', expand=True)
         
+        if obj.enum_joint_type == 'revolute' or obj.enum_joint_type == 'prismatic':
+            row = layout.row()
+            row.label(text="Joint Axis:")
+            row.prop(obj, 'enum_joint_axis', text='joint axis', expand=True)
+            
+            if len(obj.enum_joint_axis) > 1:
+                row = layout.row()
+                row.label(text="ERROR! Too many joint axis selected for this joint type")
+
+        # TODO add limits to joint angles
+        # TODO additiona joint types
         
-        
-        
-        # TODO put in axis with limits
-        
-        
-def joint_parent_changed(self, context):
-    print("joint parent property changed!")
-    print("current object is", context.object)
-    print(self.sk_joint_parent)
-    print(context.object.sk_joint_parent)
+
+enum_joint_type_options = [
+    ('revolute', 'Revolute', '', 1),
+    ('prismatic', 'Prismatic', '', 2),
+    ('todo', 'todo more', '', 3),
+    ]
+    
+enum_joint_axis_options = [
+    ('x', 'X', 'x axis'),
+    ('y', 'Y', 'y axis'),
+    ('z', 'Z', 'z axis')
+    ]
 
 def register():
-    bpy.utils.register_class(SimpleKinematicsPanel)
-    
-    # create the properties I need to 
-    # bpy.props
-    bpy.types.Object.sk_joint_parent = bpy.props.PointerProperty(type=bpy.types.Object, name="sk_joint_parent", description="Simple Kinematics Joint Parent Object", update=joint_parent_changed)
+    # create the needed properties
+    bpy.types.Object.enum_joint_type = bpy.props.EnumProperty(items=enum_joint_type_options)
+    bpy.types.Object.enum_joint_axis = bpy.props.EnumProperty(items=enum_joint_axis_options, options = {"ENUM_FLAG"}, default={'x'})
+    bpy.types.Object.sk_joint_parent = bpy.props.PointerProperty(type=bpy.types.Object, name="sk_joint_parent", description="Simple Kinematics Joint Parent Object", update=None)
     bpy.types.Object.sk_joint_child = bpy.props.PointerProperty(type=bpy.types.Object, name="sk_joint_child", description="Simple Kinematics Joint Child Object", update=None)
+    bpy.utils.register_class(SimpleKinematicsJointPanel)
 
 
 def unregister():
-    bpy.utils.unregister_class(SimpleKinematicsPanel)
+    bpy.utils.unregister_class(SimpleKinematicsJointPanel)
+    del bpy.types.Object.enum_joint_type
+    del bpy.types.Object.enum_joint_axis
+    del bpy.types.Object.sk_joint_parent
+    del bpy.types.Object.sk_joint_child
 
 
 if __name__ == "__main__":
