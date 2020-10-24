@@ -18,6 +18,8 @@
 
 import bpy
 import time
+from mathutils import Vector
+import numpy as np
 from xml.etree import ElementTree
 from xml.etree.ElementTree import Element, SubElement, Comment, tostring
 from xml.dom import minidom
@@ -64,7 +66,6 @@ def export_link(context, obj, xml_model):
     
     xml_link_pose.text = pose
 
-
 # warning there is a difference in joint definitions between SDF versions 1.4 and later    
 def export_joint(context, obj, xml_model):
     print("exporting joint", obj.name)
@@ -77,13 +78,32 @@ def export_joint(context, obj, xml_model):
     xml_joint_child = SubElement(xml_joint, 'child')
     xml_joint_child.text = obj.sk_joint_child.name
     
-    # pose: where the joint is relative to the child frame, in the child frame
-    # x y z angle angle angle (Euler roll pitch yaw; extrinsic x-y-z rotation)
-    xml_joint_pose = SubElement(xml_joint, 'pose')
-    
-    
-    # axis: <axis><xyz> unit vector..  <use_parent_model_frame>true</>
-    # axis expressed in the parent link's model frame
+    # TODO update to handle more types. seems like this could be a good use of OOP...
+    if obj.enum_joint_type == 'revolute':
+        # pose: where the joint is relative to the child frame, in the child frame
+        # x y z angle angle angle (Euler roll pitch yaw; extrinsic x-y-z rotation)
+        xml_joint_pose = SubElement(xml_joint, 'pose')
+        pose_wrt_child = obj.sk_joint_child.matrix_world.inverted() @ obj.matrix_world # the '@' notation means matrix (not element) multiplication
+
+        pose = ""
+        pose += repr(pose_wrt_child.translation[0]) + " "
+        pose += repr(pose_wrt_child.translation[1]) + " "
+        pose += repr(pose_wrt_child.translation[2]) + " "
+        
+        rot = pose_wrt_child.to_euler('XYZ')
+        pose += repr(rot.x) + " "
+        pose += repr(rot.y) + " "
+        pose += repr(rot.z)
+        
+        xml_joint_pose.text = pose
+        
+    if obj.enum_joint_type == 'revolute':
+        # using SDF v1.5 standard
+        # axis unit vector expressed in the joint frame
+        axis_dict = {'x':'1 0 0', 'y':'0 1 0', 'z':'0 0 1'}
+        xml_axis = SubElement(xml_joint, 'axis')
+        xml_xyz = SubElement(xml_axis, 'xyz')
+        xml_xyz.text = axis_dict[list(obj.enum_joint_axis)[0]]
 
     
 def export_tree(context):
@@ -91,7 +111,7 @@ def export_tree(context):
     export_start_time = time.time()
     
     xml_root = Element('sdf')
-    xml_root.set('version', '1.4')
+    xml_root.set('version', '1.5')
     xml_model = SubElement(xml_root, 'model')
     xml_model.set('name', "robot_"+root.name)
     
@@ -106,18 +126,13 @@ def export_tree(context):
             
             export_joint(context, joint, xml_model)
             
-            print("looking at joint", joint.name, "with child", joint.sk_joint_child.name)
-            print("  time check", joint.sk_joint_child['sk_export_time'], export_start_time)
-            
             if joint.sk_joint_child['sk_export_time'] != export_start_time:
                 # add to walk later
-                print("    adding", joint.sk_joint_child.name, "to search frontier")
                 link_frontier.append(joint.sk_joint_child)
                 
                 # mark link as visited so don't come back to it
                 joint.sk_joint_child['sk_export_time'] = export_start_time
                 
-                print("    time set", joint.sk_joint_child['sk_export_time'], export_start_time)
                 
     print(xml_pretty(xml_root))
     
@@ -208,10 +223,8 @@ def register():
     bpy.types.Object.enum_joint_axis = bpy.props.EnumProperty(items=enum_joint_axis_options, options = {"ENUM_FLAG"}, default={'x'})
     bpy.types.Object.sk_joint_parent = bpy.props.PointerProperty(type=bpy.types.Object, name="sk_joint_parent", description="Simple Kinematics Joint Parent Object", update=None)
     bpy.types.Object.sk_joint_child = bpy.props.PointerProperty(type=bpy.types.Object, name="sk_joint_child", description="Simple Kinematics Joint Child Object", update=None)
-    #bpy.types.Object.sk_export_time = bpy.props.FloatProperty(name='sk export time')
     bpy.utils.register_class(SDFExportOperator)
     bpy.utils.register_class(SimpleKinematicsJointPanel)
-
 
 def unregister():
     bpy.utils.unregister_class(SDFExportOperator)
@@ -220,8 +233,6 @@ def unregister():
     del bpy.types.Object.enum_joint_axis
     del bpy.types.Object.sk_joint_parent
     del bpy.types.Object.sk_joint_child
-    #del bpy.types.Object.sk_export_time
-
 
 if __name__ == "__main__":
     register()
