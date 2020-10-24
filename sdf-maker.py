@@ -18,6 +18,18 @@
 
 import bpy
 import time
+from xml.etree import ElementTree
+from xml.etree.ElementTree import Element, SubElement, Comment, tostring
+from xml.dom import minidom
+# https://pymotw.com/2/xml/etree/ElementTree/create.html
+
+
+def xml_pretty(elem):
+    """Return a pretty-printed XML string for the Element.
+    """
+    rough_string = ElementTree.tostring(elem, 'utf-8')
+    reparsed = minidom.parseString(rough_string)
+    return reparsed.toprettyxml(indent="  ")
 
 def build_kinematic_tree(context):
     # tells links which joints are DOWNSTREAM of them
@@ -29,40 +41,85 @@ def build_kinematic_tree(context):
         if not( obj.sk_joint_parent == None):
             dict_tmp = context.scene.objects[obj.sk_joint_parent.name]['sk_link_child_joints']
             dict_tmp[repr(len(dict_tmp.keys())+1)] = obj
-            print(dict_tmp)    
 
-
-def export_link(context, obj):
+# http://sdformat.org/tutorials?tut=spec_model_kinematics&cat=specification&
+def export_link(context, obj, xml_model):
     print("exporting link", obj.name)
     # TODO export data for that link (special for root?????)
-
+    xml_link = SubElement(xml_model, 'link')
+    xml_link.set('name', obj.name)
     
-def export_joint(context, obj):
+    # pose is initial pose relative to the model frame
+    # use blender origin as model frame origin
+    xml_link_pose = SubElement(xml_link, 'pose')
+    pose = ""
+    pose += repr(obj.matrix_world.translation[0]) + " "
+    pose += repr(obj.matrix_world.translation[1]) + " "
+    pose += repr(obj.matrix_world.translation[2]) + " "
+    
+    rot = obj.matrix_world.to_euler('XYZ')
+    pose += repr(rot.x) + " "
+    pose += repr(rot.y) + " "
+    pose += repr(rot.z)
+    
+    xml_link_pose.text = pose
+
+
+# warning there is a difference in joint definitions between SDF versions 1.4 and later    
+def export_joint(context, obj, xml_model):
     print("exporting joint", obj.name)
     # TODO export data for that joint
+    xml_joint = SubElement(xml_model, 'joint')
+    xml_joint.set('name', obj.name)
+    xml_joint.set('type', obj.enum_joint_type)
+    xml_joint_parent = SubElement(xml_joint, 'parent')
+    xml_joint_parent.text = obj.sk_joint_parent.name
+    xml_joint_child = SubElement(xml_joint, 'child')
+    xml_joint_child.text = obj.sk_joint_child.name
+    
+    # pose: where the joint is relative to the child frame, in the child frame
+    # x y z angle angle angle (Euler roll pitch yaw; extrinsic x-y-z rotation)
+    xml_joint_pose = SubElement(xml_joint, 'pose')
+    
+    
+    # axis: <axis><xyz> unit vector..  <use_parent_model_frame>true</>
+    # axis expressed in the parent link's model frame
 
     
 def export_tree(context):
     root = context.object
     export_start_time = time.time()
     
+    xml_root = Element('sdf')
+    xml_root.set('version', '1.4')
+    xml_model = SubElement(xml_root, 'model')
+    xml_model.set('name', "robot_"+root.name)
+    
     # explore the kinematic tree from root down
     link_frontier = [root]
     while len(link_frontier) > 0:
         link = link_frontier.pop()
         
-        export_link(context, link)
+        export_link(context, link, xml_model)
         
         for j, joint in link['sk_link_child_joints'].iteritems():
             
-            export_joint(context, joint)
+            export_joint(context, joint, xml_model)
+            
+            print("looking at joint", joint.name, "with child", joint.sk_joint_child.name)
+            print("  time check", joint.sk_joint_child.sk_export_time, export_start_time)
             
             if joint.sk_joint_child.sk_export_time != export_start_time:
                 # add to walk later
+                print("    adding", joint.sk_joint_child.name, "to search frontier")
                 link_frontier.append(joint.sk_joint_child)
                 
                 # mark link as visited so don't come back to it
-                joint.sk_export_time = export_start_time
+                joint.sk_joint_child.sk_export_time = export_start_time
+                
+                print("    time set", joint.sk_joint_child.sk_export_time, export_start_time)
+                
+    print(xml_pretty(xml_root))
     
 
 class SDFExportOperator(bpy.types.Operator):
@@ -129,7 +186,8 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
                 row.label(text="ERROR! Too many joint axis selected for this joint type")
 
         # TODO add limits to joint angles
-        # TODO additiona joint types
+        # TODO additional joint types
+        # TODO have separate panel menus for links and joints, add link mass
         
 
 enum_joint_type_options = [
@@ -169,6 +227,4 @@ def unregister():
 if __name__ == "__main__":
     register()
 
-
-# TODO register shortcut key for adding the joint constraint? "j" seems free
 
