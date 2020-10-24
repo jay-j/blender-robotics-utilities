@@ -13,13 +13,83 @@
 # add a (custom) constraint type to the empty
 # this lets you select the joint type, parent, and child body
 
-import bpy
+# joint can only have one parent link and child link
+# links can have unlimited related joints
 
+import bpy
+import time
+
+def build_kinematic_tree(context):
+    # tells links which joints are DOWNSTREAM of them
+    # go over all in context.scene.objects
+    for obj in context.scene.objects:
+        obj['sk_link_child_joints'] = {}
+    
+    for obj in context.scene.objects:
+        if not( obj.sk_joint_parent == None):
+            dict_tmp = context.scene.objects[obj.sk_joint_parent.name]['sk_link_child_joints']
+            dict_tmp[repr(len(dict_tmp.keys())+1)] = obj
+            print(dict_tmp)    
+
+
+def export_link(context, obj):
+    print("exporting link", obj.name)
+    # TODO export data for that link (special for root?????)
+
+    
+def export_joint(context, obj):
+    print("exporting joint", obj.name)
+    # TODO export data for that joint
+
+    
+def export_tree(context):
+    root = context.object
+    export_start_time = time.time()
+    
+    # explore the kinematic tree from root down
+    link_frontier = [root]
+    while len(link_frontier) > 0:
+        link = link_frontier.pop()
+        
+        export_link(context, link)
+        
+        for j, joint in link['sk_link_child_joints'].iteritems():
+            
+            export_joint(context, joint)
+            
+            if joint.sk_joint_child.sk_export_time != export_start_time:
+                # add to walk later
+                link_frontier.append(joint.sk_joint_child)
+                
+                # mark link as visited so don't come back to it
+                joint.sk_export_time = export_start_time
+    
+
+class SDFExportOperator(bpy.types.Operator):
+    bl_idname = 'sk.export_sdf'
+    bl_label = 'Export SDF'
+    bl_description = 'Export SDF'
+    bl_options = {'REGISTER', 'UNDO'}
+    
+    action: bpy.props.EnumProperty(
+        items=[('SDF', 'sdf', 'sdf')]
+        )
+    
+    def execute(self, context):
+        print('Export action called!')
+        root = context.object
+        print("root object=", root)
+        
+        build_kinematic_tree(context)
+        
+        export_tree(context)
+        
+        return {'FINISHED'}
 
 # this is the panel in the constraints window where you define joint information
 class SimpleKinematicsJointPanel(bpy.types.Panel):
     """Creates a Panel in the Constraints properties window"""
-    bl_label = "Simple Kinematics Joint Properties"
+    bl_label = "Simple Kinematics"
     bl_idname = "OBJECT_PT_simplekinematics"
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
@@ -27,8 +97,10 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
-
         obj = context.object
+              
+        row = layout.row()
+        row.operator('sk.export_sdf', text="Export using this object as root").action = 'SDF'
 
         row = layout.row()
         row.label(text="Connects Links")
@@ -78,36 +150,25 @@ def register():
     bpy.types.Object.enum_joint_axis = bpy.props.EnumProperty(items=enum_joint_axis_options, options = {"ENUM_FLAG"}, default={'x'})
     bpy.types.Object.sk_joint_parent = bpy.props.PointerProperty(type=bpy.types.Object, name="sk_joint_parent", description="Simple Kinematics Joint Parent Object", update=None)
     bpy.types.Object.sk_joint_child = bpy.props.PointerProperty(type=bpy.types.Object, name="sk_joint_child", description="Simple Kinematics Joint Child Object", update=None)
+    bpy.types.Object.sk_export_time = bpy.props.FloatProperty(name='sk export time')
+    bpy.utils.register_class(SDFExportOperator)
     bpy.utils.register_class(SimpleKinematicsJointPanel)
 
 
 def unregister():
+    bpy.utils.unregister_class(SDFExportOperator)
     bpy.utils.unregister_class(SimpleKinematicsJointPanel)
     del bpy.types.Object.enum_joint_type
     del bpy.types.Object.enum_joint_axis
     del bpy.types.Object.sk_joint_parent
     del bpy.types.Object.sk_joint_child
 
+    del bpy.types.Object.sk_export_time
+
 
 if __name__ == "__main__":
     register()
 
-
-
-
-
-# define button to export the sdf model
-
-# TODO how to walk through the model? need to declare a root body? how to detect things that have children based on the related constraints?
-# generate a timecode/hash that gets saved for each export sessions
-# how to handle loops so it stops? maybe on walking through the tree save that timecode property to each object
-# so if you encounter the timecode, then don't parse that link
-# for each link in links_frontier: # ok actually while not empty pop it off or something
-#   export link data
-#   for each child joint
-#       save the joint export data
-#       if the joint's child link hasn't been added to frontier yet
-#          then add to frontier and mark down the export timecode so it's not visited again
 
 # TODO register shortcut key for adding the joint constraint? "j" seems free
 
