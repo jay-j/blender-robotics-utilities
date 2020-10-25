@@ -19,7 +19,7 @@
 import bpy
 import time
 from mathutils import Vector
-import numpy as np
+import os
 from xml.etree import ElementTree
 from xml.etree.ElementTree import Element, SubElement, Comment, tostring
 from xml.dom import minidom
@@ -80,7 +80,8 @@ def export_link_stl(context, obj, xml_link):
     bpy.ops.export_mesh.stl(filepath=bpy.path.abspath('//mesh_stl/' + obj.name + '.stl'), use_selection=True)
     
     # restore selection
-    bpy.context.view_layer.objects.active = sel_obj
+    bpy.ops.object.select_all(action='DESELECT')
+    sel_obj.select_set(True)
     
     # get the pose
     # TODO adjust to compensate for STL export process
@@ -110,7 +111,6 @@ def export_link_stl(context, obj, xml_link):
 # exports xml data for a link entity
 def export_link(context, obj, xml_model):
     print("exporting link", obj.name)
-    # TODO export data for that link (special for root?????)
     xml_link = SubElement(xml_model, 'link')
     xml_link.set('name', obj.name)
     
@@ -136,7 +136,6 @@ def export_link(context, obj, xml_model):
 # warning there is a difference in joint definitions between SDF versions 1.4 and later    
 def export_joint(context, obj, xml_model):
     print("exporting joint", obj.name)
-    # TODO export data for that joint
     xml_joint = SubElement(xml_model, 'joint')
     xml_joint.set('name', obj.name)
     xml_joint.set('type', obj.enum_joint_type)
@@ -177,6 +176,10 @@ def export_tree(context):
     root = context.object
     export_start_time = time.time()
     
+    if not os.path.exists(bpy.path.abspath('//mesh_stl')):
+        print('Did not find mesh folder, creating it')
+        os.makedirs(bpy.path.abspath('//mesh_stl'))
+    
     xml_root = Element('sdf')
     xml_root.set('version', '1.5')
     xml_model = SubElement(xml_root, 'model')
@@ -200,8 +203,11 @@ def export_tree(context):
                 # mark link as visited so don't come back to it
                 joint.sk_joint_child['sk_export_time'] = export_start_time
                 
-                
-    print(xml_pretty(xml_root))
+    xml_pretty_string = xml_pretty(xml_root)
+    print(xml_pretty_string)
+    fd = open(bpy.path.abspath('//robot_' + root.name + '.sdf'), 'w')
+    fd.write(xml_pretty_string)
+    fd.close()
     
 # this class is responsible for responding to the 'export' button being pushed
 class SDFExportOperator(bpy.types.Operator):
