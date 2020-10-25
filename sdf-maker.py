@@ -84,7 +84,6 @@ def export_link_stl(context, obj, xml_link):
     sel_obj.select_set(True)
     
     # get the pose
-    # TODO adjust to compensate for STL export process
     xml_visual = SubElement(xml_link, 'visual')
     xml_visual.set('name', obj.name + '_visual')
     xml_geometry = SubElement(xml_visual, 'geometry')
@@ -99,12 +98,13 @@ def export_link_stl(context, obj, xml_link):
     pose += repr(rot.y) + " "
     pose += repr(rot.z)
     
-    xml_geo_pose = SubElement(xml_geometry, 'pose')
-    xml_geo_pose.text = pose
-    
     xml_mesh = SubElement(xml_geometry, 'mesh')
     xml_mesh_uri = SubElement(xml_mesh, 'uri')
-    xml_mesh_uri.text = 'file://mesh_stl/' + obj.name + '.stl'
+    # TODO remove absolute file path.. or make a way to dynamically generate it
+    xml_mesh_uri.text = 'file:///home/jjasper/blender-sdf-quick/mesh_stl/' + obj.name + '.stl'
+
+    xml_geo_pose = SubElement(xml_visual, 'pose')
+    xml_geo_pose.text = pose
     
 
 # http://sdformat.org/tutorials?tut=spec_model_kinematics&cat=specification&
