@@ -147,7 +147,7 @@ def export_joint(context, obj, xml_model):
     xml_joint_child.text = obj.sk_joint_child.name
     
     # TODO update to handle more types. seems like this could be a good use of OOP...
-    if obj.enum_joint_type == 'revolute':
+    if ['revolute', 'prismatic'].count(obj.enum_joint_type) > 0:
         # pose: where the joint is relative to the child frame, in the child frame
         # x y z angle angle angle (Euler roll pitch yaw; extrinsic x-y-z rotation)
         xml_joint_pose = SubElement(xml_joint, 'pose')
@@ -165,7 +165,7 @@ def export_joint(context, obj, xml_model):
         
         xml_joint_pose.text = pose
         
-    if obj.enum_joint_type == 'revolute':
+    if ['revolute', 'prismatic'].count(obj.enum_joint_type) > 0:
         # using SDF v1.5 standard
         # axis unit vector expressed in the joint frame
         axis_dict = {'x':'1 0 0', 'y':'0 1 0', 'z':'0 0 1'}
@@ -198,7 +198,7 @@ def export_tree(context):
             
             export_joint(context, joint, xml_model)
             
-            if joint.sk_joint_child['sk_export_time'] != export_start_time:
+            if (not hasattr(joint.sk_joint_child, 'sk_export_time')) or (joint.sk_joint_child['sk_export_time'] != export_start_time):
                 # add to walk later
                 link_frontier.append(joint.sk_joint_child)
                 
@@ -207,7 +207,8 @@ def export_tree(context):
                 
     xml_pretty_string = xml_pretty(xml_root)
     print(xml_pretty_string)
-    fd = open(bpy.path.abspath('//robot_' + root.name + '.sdf'), 'w')
+    fd = open(bpy.path.abspath('//robot.sdf'), 'w')
+    #fd = open(bpy.path.abspath('//robot_' + root.name + '.sdf'), 'w')
     fd.write(xml_pretty_string)
     fd.close()
     
@@ -226,6 +227,7 @@ class SDFExportOperator(bpy.types.Operator):
         print('Export action called, root object=', context.object)
         build_kinematic_tree(context)
         export_tree(context)
+        print('export, successful')
         
         return {'FINISHED'}
 
@@ -329,5 +331,5 @@ def unregister():
 
 if __name__ == "__main__":
     register()
-
+    print('register, successful')
 
