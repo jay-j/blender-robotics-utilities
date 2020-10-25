@@ -44,6 +44,27 @@ def build_kinematic_tree(context):
             dict_tmp = context.scene.objects[obj.sk_joint_parent.name]['sk_link_child_joints']
             dict_tmp[repr(len(dict_tmp.keys())+1)] = obj
 
+def inertia_of_box(obj):
+    inertia = {}
+    inertia['ixx'] = (1.0/12.0)*obj.sk_mass*(obj.dimensions[1]**2 + obj.dimensions[2]**2)
+    inertia['iyy'] = (1.0/12.0)*obj.sk_mass*(obj.dimensions[0]**2 + obj.dimensions[2]**2)
+    inertia['izz'] = (1.0/12.0)*obj.sk_mass*(obj.dimensions[0]**2 + obj.dimensions[1]**2)
+    inertia['ixy'] = 0
+    inertia['ixz'] = 0
+    inertia['iyz'] = 0
+    return inertia
+
+def export_link_inertial(context, obj, xml_link):
+    xml_mass = SubElement(xml_link, 'mass')
+    xml_mass.text = repr(obj.sk_mass)
+    
+    xml_inertia = SubElement(xml_link, 'inertia')
+    inertia = inertia_of_box(obj)
+    for i in inertia:
+        print(i) # guess these are keys
+        xml_i = SubElement(xml_inertia, i)
+        xml_i.text = repr(inertia[i])
+
 # http://sdformat.org/tutorials?tut=spec_model_kinematics&cat=specification&
 def export_link(context, obj, xml_model):
     print("exporting link", obj.name)
@@ -65,6 +86,8 @@ def export_link(context, obj, xml_model):
     pose += repr(rot.z)
     
     xml_link_pose.text = pose
+    
+    export_link_inertial(context, obj, xml_link)
 
 # warning there is a difference in joint definitions between SDF versions 1.4 and later    
 def export_joint(context, obj, xml_model):
@@ -170,39 +193,47 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         obj = context.object
-              
-        row = layout.row()
-        row.operator('sk.export_sdf', text="Export using this object as root").action = 'SDF'
-
-        row = layout.row()
-        row.label(text="Connects Links")
         
         row = layout.row()
-        row.prop(obj, "sk_joint_parent")
+        row.prop(obj, 'enum_sk_type', text='Type', expand=True)
         
-        row = layout.row()
-        row.prop(obj, "sk_joint_child")
-    
-        # TODO better to detect property changes to the parent/child so they can be marked/unmarked rather than searching at export time for them
-        
-        row = layout.row()
-        row.label(text="Joint Properties")
-               
-        row = layout.row()
-        row.prop(obj, 'enum_joint_type', text='joint type', expand=True)
-        
-        if obj.enum_joint_type == 'revolute' or obj.enum_joint_type == 'prismatic':
+        if obj.enum_sk_type == 'link':
             row = layout.row()
-            row.label(text="Joint Axis:")
-            row.prop(obj, 'enum_joint_axis', text='joint axis', expand=True)
-            
-            if len(obj.enum_joint_axis) > 1:
-                row = layout.row()
-                row.label(text="ERROR! Too many joint axis selected for this joint type")
+            row.prop(obj, 'sk_mass', text='Mass')
+        
+            row = layout.row()
+            row.operator('sk.export_sdf', text="Export using this object as root").action = 'SDF'
 
-        # TODO add limits to joint angles
-        # TODO additional joint types
-        # TODO have separate panel menus for links and joints, add link mass
+        if obj.enum_sk_type == 'joint':
+            row = layout.row()
+            row.label(text="Connects Links")
+            
+            row = layout.row()
+            row.prop(obj, "sk_joint_parent")
+            
+            row = layout.row()
+            row.prop(obj, "sk_joint_child")
+        
+            # TODO better to detect property changes to the parent/child so they can be marked/unmarked rather than searching at export time for them
+            
+            row = layout.row()
+            row.label(text="Joint Properties")
+                   
+            row = layout.row()
+            row.prop(obj, 'enum_joint_type', text='joint type', expand=True)
+            
+            if obj.enum_joint_type == 'revolute' or obj.enum_joint_type == 'prismatic':
+                row = layout.row()
+                row.label(text="Joint Axis:")
+                row.prop(obj, 'enum_joint_axis', text='joint axis', expand=True)
+                
+                if len(obj.enum_joint_axis) > 1:
+                    row = layout.row()
+                    row.label(text="ERROR! Too many joint axis selected for this joint type")
+
+            # TODO add limits to joint angles
+            # TODO additional joint types
+            # TODO have separate panel menus for links and joints, add link mass
         
 
 enum_joint_type_options = [
@@ -217,12 +248,19 @@ enum_joint_axis_options = [
     ('z', 'Z', 'z axis')
     ]
 
+enum_sk_type = [
+    ('link', 'link', 'link'),
+    ('joint', 'joint', 'joint')
+    ]
+
 def register():
     # create the needed properties
+    bpy.types.Object.enum_sk_type = bpy.props.EnumProperty(items=enum_sk_type)
     bpy.types.Object.enum_joint_type = bpy.props.EnumProperty(items=enum_joint_type_options)
     bpy.types.Object.enum_joint_axis = bpy.props.EnumProperty(items=enum_joint_axis_options, options = {"ENUM_FLAG"}, default={'x'})
     bpy.types.Object.sk_joint_parent = bpy.props.PointerProperty(type=bpy.types.Object, name="sk_joint_parent", description="Simple Kinematics Joint Parent Object", update=None)
     bpy.types.Object.sk_joint_child = bpy.props.PointerProperty(type=bpy.types.Object, name="sk_joint_child", description="Simple Kinematics Joint Child Object", update=None)
+    bpy.types.Object.sk_mass = bpy.props.FloatProperty(name='sk_mass', default=1)
     bpy.utils.register_class(SDFExportOperator)
     bpy.utils.register_class(SimpleKinematicsJointPanel)
 
@@ -233,6 +271,8 @@ def unregister():
     del bpy.types.Object.enum_joint_axis
     del bpy.types.Object.sk_joint_parent
     del bpy.types.Object.sk_joint_child
+    del bpy.types.Object.enum_sk_type
+    del bpy.types.Object.sk_mass
 
 if __name__ == "__main__":
     register()
