@@ -33,9 +33,9 @@ def xml_pretty(elem):
     reparsed = minidom.parseString(rough_string)
     return reparsed.toprettyxml(indent="  ")
 
+# explores all objects in context.scene.objects to 
+# tells links which joints are DOWNSTREAM of them
 def build_kinematic_tree(context):
-    # tells links which joints are DOWNSTREAM of them
-    # go over all in context.scene.objects
     for obj in context.scene.objects:
         obj['sk_link_child_joints'] = {}
     
@@ -61,11 +61,53 @@ def export_link_inertial(context, obj, xml_link):
     xml_inertia = SubElement(xml_link, 'inertia')
     inertia = inertia_of_box(obj)
     for i in inertia:
-        print(i) # guess these are keys
         xml_i = SubElement(xml_inertia, i)
         xml_i.text = repr(inertia[i])
 
+def export_link_stl(context, obj, xml_link):
+    # store the active object so it can be restored later
+    sel_obj = bpy.context.view_layer.objects.active
+    
+    # TODO find a way for collection instances to serve as single links
+    if obj.type != 'MESH':
+        print("ERROR object", obj.name, "is not a mesh object")
+        return
+    
+    # select only the single mesh to be exported
+    bpy.ops.object.select_all(action='DESELECT')
+    obj.select_set(True)
+    
+    bpy.ops.export_mesh.stl(filepath=bpy.path.abspath('//mesh_stl/' + obj.name + '.stl'), use_selection=True)
+    
+    # restore selection
+    bpy.context.view_layer.objects.active = sel_obj
+    
+    # get the pose
+    # TODO adjust to compensate for STL export process
+    xml_visual = SubElement(xml_link, 'visual')
+    xml_visual.set('name', obj.name + '_visual')
+    xml_geometry = SubElement(xml_visual, 'geometry')
+    
+    xform = obj.matrix_world.inverted()
+    pose = ''
+    pose += repr(xform.translation[0]) + " "
+    pose += repr(xform.translation[1]) + " "
+    pose += repr(xform.translation[2]) + " "
+    rot = xform.to_euler('XYZ')
+    pose += repr(rot.x) + " "
+    pose += repr(rot.y) + " "
+    pose += repr(rot.z)
+    
+    xml_geo_pose = SubElement(xml_geometry, 'pose')
+    xml_geo_pose.text = pose
+    
+    xml_mesh = SubElement(xml_geometry, 'mesh')
+    xml_mesh_uri = SubElement(xml_mesh, 'uri')
+    xml_mesh_uri.text = 'file://mesh_stl/' + obj.name + '.stl'
+    
+
 # http://sdformat.org/tutorials?tut=spec_model_kinematics&cat=specification&
+# exports xml data for a link entity
 def export_link(context, obj, xml_model):
     print("exporting link", obj.name)
     # TODO export data for that link (special for root?????)
@@ -88,7 +130,9 @@ def export_link(context, obj, xml_model):
     xml_link_pose.text = pose
     
     export_link_inertial(context, obj, xml_link)
+    export_link_stl(context, obj, xml_link)
 
+# exports xml data for a joint entity
 # warning there is a difference in joint definitions between SDF versions 1.4 and later    
 def export_joint(context, obj, xml_model):
     print("exporting joint", obj.name)
@@ -128,7 +172,7 @@ def export_joint(context, obj, xml_model):
         xml_xyz = SubElement(xml_axis, 'xyz')
         xml_xyz.text = axis_dict[list(obj.enum_joint_axis)[0]]
 
-    
+# follows an already-explored tree to add links and joints to the xml data    
 def export_tree(context):
     root = context.object
     export_start_time = time.time()
@@ -159,7 +203,7 @@ def export_tree(context):
                 
     print(xml_pretty(xml_root))
     
-
+# this class is responsible for responding to the 'export' button being pushed
 class SDFExportOperator(bpy.types.Operator):
     bl_idname = 'sk.export_sdf'
     bl_label = 'Export SDF'
@@ -171,12 +215,8 @@ class SDFExportOperator(bpy.types.Operator):
         )
     
     def execute(self, context):
-        print('Export action called!')
-        root = context.object
-        print("root object=", root)
-        
+        print('Export action called, root object=', context.object)
         build_kinematic_tree(context)
-        
         export_tree(context)
         
         return {'FINISHED'}
@@ -199,8 +239,8 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
         
         if obj.enum_sk_type == 'link':
             row = layout.row()
-            row.prop(obj, 'sk_mass', text='Mass')
-        
+            row.prop(obj, 'sk_mass', text='Mass (kg)')
+                    
             row = layout.row()
             row.operator('sk.export_sdf', text="Export using this object as root").action = 'SDF'
 
@@ -233,7 +273,6 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
 
             # TODO add limits to joint angles
             # TODO additional joint types
-            # TODO have separate panel menus for links and joints, add link mass
         
 
 enum_joint_type_options = [
@@ -252,10 +291,16 @@ enum_sk_type = [
     ('link', 'link', 'link'),
     ('joint', 'joint', 'joint')
     ]
+    
+enum_sk_vis_type = [
+    ('box','box','box'),
+    ('mesh','mesh','mesh')
+    ]
 
 def register():
     # create the needed properties
     bpy.types.Object.enum_sk_type = bpy.props.EnumProperty(items=enum_sk_type)
+    bpy.types.Object.enum_sk_vis_type = bpy.props.EnumProperty(items=enum_sk_vis_type)
     bpy.types.Object.enum_joint_type = bpy.props.EnumProperty(items=enum_joint_type_options)
     bpy.types.Object.enum_joint_axis = bpy.props.EnumProperty(items=enum_joint_axis_options, options = {"ENUM_FLAG"}, default={'x'})
     bpy.types.Object.sk_joint_parent = bpy.props.PointerProperty(type=bpy.types.Object, name="sk_joint_parent", description="Simple Kinematics Joint Parent Object", update=None)
