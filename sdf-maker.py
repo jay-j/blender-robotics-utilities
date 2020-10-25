@@ -16,6 +16,9 @@
 # joint can only have one parent link and child link
 # links can have unlimited related joints
 
+# spits out the .sdf file in the current (blender) directory
+# spits out the .stl files in a subdirectory mesh_stl, will create this if it needs to
+
 import bpy
 import time
 from mathutils import Vector
@@ -100,8 +103,7 @@ def export_link_stl(context, obj, xml_link):
     
     xml_mesh = SubElement(xml_geometry, 'mesh')
     xml_mesh_uri = SubElement(xml_mesh, 'uri')
-    # TODO remove absolute file path.. or make a way to dynamically generate it
-    xml_mesh_uri.text = 'file:///home/jjasper/blender-sdf-quick/mesh_stl/' + obj.name + '.stl'
+    xml_mesh_uri.text = 'file://'+ bpy.path.abspath('//mesh_stl/' + obj.name + '.stl')
 
     xml_geo_pose = SubElement(xml_visual, 'pose')
     xml_geo_pose.text = pose
