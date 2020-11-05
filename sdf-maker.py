@@ -21,6 +21,7 @@
 
 import bpy
 import time
+from math import pi
 from mathutils import Vector
 import os
 from xml.etree import ElementTree
@@ -46,6 +47,22 @@ def build_kinematic_tree(context):
         if not( obj.sk_joint_parent == None):
             dict_tmp = context.scene.objects[obj.sk_joint_parent.name]['sk_link_child_joints']
             dict_tmp[repr(len(dict_tmp.keys())+1)] = obj
+
+def get_joint_subtype(obj):
+    if obj.enum_joint_type == 'revolute':
+        dof = get_dof_qty(obj)
+            
+        if dof == 3:
+            return "ball"
+        if dof == 2:
+            return "universal"
+        
+        if obj.sk_axis_x_limit or obj.sk_axis_y_limit or obj.sk_axis_z_limit:
+            return "revolute"
+        else:
+            return "revolute" #"continuous"
+    else:
+        return obj.enum_joint_type
 
 def inertia_of_box(obj):
     inertia = {}
@@ -140,38 +157,85 @@ def export_joint(context, obj, xml_model):
     print("exporting joint", obj.name)
     xml_joint = SubElement(xml_model, 'joint')
     xml_joint.set('name', obj.name)
-    xml_joint.set('type', obj.enum_joint_type)
+    
+    joint_subtype = get_joint_subtype(obj)
+    xml_joint.set('type', joint_subtype)
+    
     xml_joint_parent = SubElement(xml_joint, 'parent')
     xml_joint_parent.text = obj.sk_joint_parent.name
     xml_joint_child = SubElement(xml_joint, 'child')
     xml_joint_child.text = obj.sk_joint_child.name
     
     # TODO update to handle more types. seems like this could be a good use of OOP...
-    if ['revolute', 'prismatic'].count(obj.enum_joint_type) > 0:
-        # pose: where the joint is relative to the child frame, in the child frame
-        # x y z angle angle angle (Euler roll pitch yaw; extrinsic x-y-z rotation)
-        xml_joint_pose = SubElement(xml_joint, 'pose')
-        pose_wrt_child = obj.sk_joint_child.matrix_world.inverted() @ obj.matrix_world # the '@' notation means matrix (not element) multiplication
+    # pose: where the joint is relative to the child frame, in the child frame
+    # x y z angle angle angle (Euler roll pitch yaw; extrinsic x-y-z rotation)
+    xml_joint_pose = SubElement(xml_joint, 'pose')
+    pose_wrt_child = obj.sk_joint_child.matrix_world.inverted() @ obj.matrix_world # the '@' notation means matrix (not element) multiplication
 
-        pose = ""
-        pose += repr(pose_wrt_child.translation[0]) + " "
-        pose += repr(pose_wrt_child.translation[1]) + " "
-        pose += repr(pose_wrt_child.translation[2]) + " "
+    pose = ""
+    pose += repr(pose_wrt_child.translation[0]) + " "
+    pose += repr(pose_wrt_child.translation[1]) + " "
+    pose += repr(pose_wrt_child.translation[2]) + " "
+    
+    rot = pose_wrt_child.to_euler('XYZ')
+    pose += repr(rot.x) + " "
+    pose += repr(rot.y) + " "
+    pose += repr(rot.z)
+    
+    xml_joint_pose.text = pose
         
-        rot = pose_wrt_child.to_euler('XYZ')
-        pose += repr(rot.x) + " "
-        pose += repr(rot.y) + " "
-        pose += repr(rot.z)
+    # axis 1
+    if ['revolute', 'continuous', 'prismatic', 'universal'].count(joint_subtype) > 0:
+        # build nicer arrays of axis properties, with 0,1,2 as xyz
+        axis_enabled = [obj.sk_axis_x_enabled, obj.sk_axis_y_enabled, obj.sk_axis_z_enabled]
+        axis_limit = [obj.sk_axis_x_limit, obj.sk_axis_y_limit, obj.sk_axis_z_limit]
+        axis_lower = [obj.sk_axis_x_lower, obj.sk_axis_y_lower, obj.sk_axis_z_lower]
+        axis_upper = [obj.sk_axis_x_upper, obj.sk_axis_y_upper, obj.sk_axis_z_upper]
         
-        xml_joint_pose.text = pose
+        # figure out which axis is to be axis1
+        axis1 = -1
+        for i in range(0,3):
+            if axis_enabled[i]:
+                axis1 = i
+                break
+        print("found axis: ", axis1)
         
-    if ['revolute', 'prismatic'].count(obj.enum_joint_type) > 0:
         # using SDF v1.5 standard
         # axis unit vector expressed in the joint frame
-        axis_dict = {'x':'1 0 0', 'y':'0 1 0', 'z':'0 0 1'}
+        axis_dict = {0:'1 0 0', 1:'0 1 0', 2:'0 0 1'}
         xml_axis = SubElement(xml_joint, 'axis')
         xml_xyz = SubElement(xml_axis, 'xyz')
-        xml_xyz.text = axis_dict[list(obj.enum_joint_axis)[0]]
+        xml_xyz.text = axis_dict[axis1]
+        
+        # set axis limits for those that allow it
+        if ['revolute', 'prismatic'].count(joint_subtype) > 0:
+            if axis_limit[axis1]:
+                xml_limit = SubElement(xml_axis, 'limit')
+                xml_lower = SubElement(xml_limit, 'lower')
+                xml_lower.text = repr(axis_lower[axis1])
+                xml_upper = SubElement(xml_limit, 'upper')
+                xml_upper.text = repr(axis_upper[axis1])
+            
+        # deal with this special case that needs a second axis
+        if joint_subtype == 'universal':
+            # figure out which axis is axis 2
+            axis2 = -1
+            for i in range(2,-1,-1):
+                if axis_enabled[i]:
+                    axis2 = i
+                    break
+            print("found axis2: ", axis2)
+            
+            # export data for that axis
+            xml_axis2 = SubElement(xml_joint, 'axis2')
+            xml_xyz2 = SubElement(xml_axis2, 'xyz')
+            xml_xyz2.text = axis_dict[axis2]
+            if axis_limit[axis2]:
+                xml_limit2 = SubElement(xml_axis2, 'limit')
+                xml_lower2 = SubElement(xml_limit2, 'lower')
+                xml_lower2.text = repr(axis_lower[axis2])
+                xml_upper2 = SubElement(xml_limit2, 'upper')
+                xml_upper2.text = repr(axis_upper[axis2])
 
 # follows an already-explored tree to add links and joints to the xml data    
 def export_tree(context):
@@ -231,6 +295,18 @@ class SDFExportOperator(bpy.types.Operator):
         
         return {'FINISHED'}
 
+def get_dof_qty(obj):
+    dof = 0
+    if obj.sk_axis_x_enabled == 1:
+        dof += 1
+    if obj.sk_axis_y_enabled == 1:
+        dof += 1
+    if obj.sk_axis_z_enabled == 1:
+        dof += 1
+    return dof
+
+
+
 # this is the panel in the constraints window where you define joint information
 class SimpleKinematicsJointPanel(bpy.types.Panel):
     """Creates a Panel in the Constraints properties window"""
@@ -273,14 +349,62 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
             row.prop(obj, 'enum_joint_type', text='joint type', expand=True)
             
             if obj.enum_joint_type == 'revolute' or obj.enum_joint_type == 'prismatic':
-                row = layout.row()
-                row.label(text="Joint Axis:")
-                row.prop(obj, 'enum_joint_axis', text='joint axis', expand=True)
                 
-                if len(obj.enum_joint_axis) > 1:
+                if obj.enum_joint_type == 'prismatic' and get_dof_qty(obj) > 1:
                     row = layout.row()
                     row.label(text="ERROR! Too many joint axis selected for this joint type")
-
+                    
+                if obj.enum_joint_type == 'revolute':
+                    row = layout.row()
+                    row.label(text="Joint subtype: " + get_joint_subtype(obj))
+                    
+                # a block for axis settings
+                axis_layout = layout.row()
+                
+                # X axis
+                axis_layout_x = axis_layout.column()
+                row = axis_layout_x.row()
+                axis_layout_x.prop(obj, 'sk_axis_x_enabled', text='X')
+                
+                row = axis_layout_x.row()
+                row.prop(obj, 'sk_axis_x_limit', text='limit')
+                row.enabled = obj.sk_axis_x_enabled
+                
+                col = axis_layout_x.column()
+                col.prop(obj, 'sk_axis_x_lower', text='lower limit')
+                col.prop(obj, 'sk_axis_x_upper', text='upper limit')
+                col.enabled = obj.sk_axis_x_limit
+                # TODO Prevent setting limits for ball joints
+                
+                # y axis
+                axis_layout_y = axis_layout.column()
+                row = axis_layout_y.row()
+                row.prop(obj, 'sk_axis_y_enabled', text='Y')
+                
+                row = axis_layout_y.row()
+                row.prop(obj, 'sk_axis_y_limit', text='limit')
+                row.enabled = obj.sk_axis_y_enabled
+                
+                col = axis_layout_y.column()
+                col.prop(obj, 'sk_axis_y_lower', text='lower limit')
+                col.prop(obj, 'sk_axis_y_upper', text='upper limit')
+                col.enabled = obj.sk_axis_y_limit
+                
+                # z axis
+                axis_layout_z = axis_layout.column()
+                row = axis_layout_z.row()
+                row.prop(obj, 'sk_axis_z_enabled', text='Z')
+                
+                row = axis_layout_z.row()
+                row.prop(obj, 'sk_axis_z_limit', text='limit')
+                row.enabled = obj.sk_axis_z_enabled
+                
+                col = axis_layout_z.column()
+                col.prop(obj, 'sk_axis_z_lower', text='lower limit')
+                col.prop(obj, 'sk_axis_z_upper', text='upper limit')
+                col.enabled = obj.sk_axis_z_limit
+                
+                
             # TODO add limits to joint angles
             # TODO additional joint types
         
@@ -288,7 +412,8 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
 enum_joint_type_options = [
     ('revolute', 'Revolute', '', 1),
     ('prismatic', 'Prismatic', '', 2),
-    ('todo', 'todo more', '', 3),
+    ('fixed', 'Fixed', '', 3),
+    ('screw', 'Screw', '', 4)
     ]
     
 enum_joint_axis_options = [
@@ -296,26 +421,38 @@ enum_joint_axis_options = [
     ('y', 'Y', 'y axis'),
     ('z', 'Z', 'z axis')
     ]
-
+    
 enum_sk_type = [
     ('link', 'link', 'link'),
     ('joint', 'joint', 'joint')
     ]
     
-enum_sk_vis_type = [
-    ('box','box','box'),
-    ('mesh','mesh','mesh')
-    ]
-
 def register():
+    # step angle for UI drags
+    step_angle_ui = 1500 # about 15 degrees
+    
     # create the needed properties
     bpy.types.Object.enum_sk_type = bpy.props.EnumProperty(items=enum_sk_type)
-    bpy.types.Object.enum_sk_vis_type = bpy.props.EnumProperty(items=enum_sk_vis_type)
     bpy.types.Object.enum_joint_type = bpy.props.EnumProperty(items=enum_joint_type_options)
     bpy.types.Object.enum_joint_axis = bpy.props.EnumProperty(items=enum_joint_axis_options, options = {"ENUM_FLAG"}, default={'x'})
     bpy.types.Object.sk_joint_parent = bpy.props.PointerProperty(type=bpy.types.Object, name="sk_joint_parent", description="Simple Kinematics Joint Parent Object", update=None)
     bpy.types.Object.sk_joint_child = bpy.props.PointerProperty(type=bpy.types.Object, name="sk_joint_child", description="Simple Kinematics Joint Child Object", update=None)
     bpy.types.Object.sk_mass = bpy.props.FloatProperty(name='sk_mass', default=1)
+    bpy.types.Object.sk_axis_x_enabled = bpy.props.BoolProperty(name="X", default=False)
+    bpy.types.Object.sk_axis_x_limit = bpy.props.BoolProperty(name="limit", default=False)
+    bpy.types.Object.sk_axis_x_lower = bpy.props.FloatProperty(name="lower", default=0, soft_min=-2*pi, soft_max=2*pi, unit="ROTATION", step=step_angle_ui)
+    bpy.types.Object.sk_axis_x_upper = bpy.props.FloatProperty(name="upper", default=0, soft_min=-2*pi, soft_max=2*pi, unit="ROTATION", step=step_angle_ui)
+    
+    bpy.types.Object.sk_axis_y_enabled = bpy.props.BoolProperty(name="Y", default=False)
+    bpy.types.Object.sk_axis_y_limit = bpy.props.BoolProperty(name="limit", default=False)
+    bpy.types.Object.sk_axis_y_lower = bpy.props.FloatProperty(name="lower", default=0, soft_min=-2*pi, soft_max=2*pi, unit="ROTATION", step=step_angle_ui)
+    bpy.types.Object.sk_axis_y_upper = bpy.props.FloatProperty(name="upper", default=0, soft_min=-2*pi, soft_max=2*pi, unit="ROTATION", step=step_angle_ui)
+    
+    bpy.types.Object.sk_axis_z_enabled = bpy.props.BoolProperty(name="Z", default=True)
+    bpy.types.Object.sk_axis_z_limit = bpy.props.BoolProperty(name="limit", default=False)
+    bpy.types.Object.sk_axis_z_lower = bpy.props.FloatProperty(name="lower", default=0, soft_min=-2*pi, soft_max=2*pi, unit="ROTATION", step=step_angle_ui)
+    bpy.types.Object.sk_axis_z_upper = bpy.props.FloatProperty(name="upper", default=0, soft_min=-2*pi, soft_max=2*pi, unit="ROTATION", step=step_angle_ui)
+    
     bpy.utils.register_class(SDFExportOperator)
     bpy.utils.register_class(SimpleKinematicsJointPanel)
 

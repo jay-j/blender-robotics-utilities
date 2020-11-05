@@ -1,0 +1,18 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/home/jjasper/blender-sdf-quick/main.cpp
+iostream
+-
+dart/dart.hpp
+-
+dart/utils/utils.hpp
+-
+dart/gui/gui.hpp
+-
+

@@ -1,0 +1,201 @@
+<?xml version="1.0" ?>
+<sdf version="1.5">
+  <model name="robot_body">
+    <link name="body">
+      <pose>0.0 0.0 0.0 0.0 -0.0 0.0</pose>
+      <mass>20.0</mass>
+      <inertia>
+        <ixx>13.333333333333332</ixx>
+        <iyy>13.333333333333332</iyy>
+        <izz>13.333333333333332</izz>
+        <ixy>0</ixy>
+        <ixz>0</ixz>
+        <iyz>0</iyz>
+      </inertia>
+      <visual name="body_visual">
+        <geometry>
+          <mesh>
+            <uri>file:///home/jjasper/blender-sdf-quick/mesh_stl/body.stl</uri>
+          </mesh>
+        </geometry>
+        <pose>-0.0 0.0 -0.0 -0.0 -0.0 -0.0</pose>
+      </visual>
+    </link>
+    <joint name="joint_1" type="revolute">
+      <parent>body</parent>
+      <child>link_1</child>
+      <pose>-0.032755255699157715 2.2139720916748047 -0.2249760627746582 0.0 -0.0 0.0</pose>
+      <axis>
+        <xyz>0 0 1</xyz>
+      </axis>
+    </joint>
+    <joint name="joint_3" type="revolute">
+      <parent>body</parent>
+      <child>link_3</child>
+      <pose>-0.032755255699157715 0.0010972321033477783 -2.1006920337677 -2.1177546977996826 1.2322333561168102e-16 3.6431453514690934e-16</pose>
+      <axis>
+        <xyz>1 0 0</xyz>
+        <limit>
+          <lower>-0.2617993950843811</lower>
+          <upper>0.2617993950843811</upper>
+        </limit>
+      </axis>
+    </joint>
+    <joint name="joint_3.001" type="prismatic">
+      <parent>body</parent>
+      <child>link_3.001</child>
+      <pose>-0.06954371929168701 0.2208726555109024 -0.07471275329589844 -1.5661500692367554 9.083172368260271e-17 2.4779930343078835e-16</pose>
+      <axis>
+        <xyz>0 1 0</xyz>
+        <limit>
+          <lower>-1.0000003576278687</lower>
+          <upper>1.0000003576278687</upper>
+        </limit>
+      </axis>
+    </joint>
+    <link name="link_3.001">
+      <pose>1.2439271211624146 -0.26841309666633606 -2.587373733520508 1.5003937482833862 2.2620560133885886e-16 -1.0755813623159258e-16</pose>
+      <mass>3.0</mass>
+      <inertia>
+        <ixx>4.034281018176955</ixx>
+        <iyy>4.034280968515514</iyy>
+        <izz>0.06856198669246916</izz>
+        <ixy>0</ixy>
+        <ixz>0</ixz>
+        <iyz>0</iyz>
+      </inertia>
+      <visual name="link_3.001_visual">
+        <geometry>
+          <mesh>
+            <uri>file:///home/jjasper/blender-sdf-quick/mesh_stl/link_3.001.stl</uri>
+          </mesh>
+        </geometry>
+        <pose>-1.243927240371704 2.5998456478118896 -0.0857408344745636 -1.5003937482833862 9.137938342256181e-17 2.3321135790603997e-16</pose>
+      </visual>
+    </link>
+    <link name="link_3">
+      <pose>0.5332516431808472 -3.2799320220947266 -1.6185822486877441 2.1177546977996826 3.752522715948041e-16 8.423065695830703e-17</pose>
+      <mass>3.0</mass>
+      <inertia>
+        <ixx>4.034281018176955</ixx>
+        <iyy>4.034280968515514</iyy>
+        <izz>0.06856198669246916</izz>
+        <ixy>0</ixy>
+        <ixz>0</ixz>
+        <iyz>0</iyz>
+      </inertia>
+      <visual name="link_3_visual">
+        <geometry>
+          <mesh>
+            <uri>file:///home/jjasper/blender-sdf-quick/mesh_stl/link_3.stl</uri>
+          </mesh>
+        </geometry>
+        <pose>-0.5332516431808472 -0.32341766357421875 -3.643235206604004 -2.1177546977996826 1.2322333561168102e-16 3.6431453514690934e-16</pose>
+      </visual>
+    </link>
+    <joint name="joint_4" type="revolute">
+      <parent>link_3</parent>
+      <child>link_4</child>
+      <pose>-0.03809957206249237 2.1417338848114014 -0.026445478200912476 -0.8198698163032532 0.0015970997046679258 -0.062675341963768</pose>
+      <axis>
+        <xyz>0 0 1</xyz>
+      </axis>
+    </joint>
+    <link name="link_4">
+      <pose>0.5410606861114502 -6.576828479766846 -4.343720436096191 0.8188433647155762 -0.04689403250813484 0.041628915816545486</pose>
+      <mass>0.5</mass>
+      <inertia>
+        <ixx>1.0237724193679416</ixx>
+        <iyy>0.22945777193867892</iyy>
+        <izz>1.1272300051576303</izz>
+        <ixy>0</ixy>
+        <ixz>0</ixz>
+        <iyz>0</iyz>
+      </inertia>
+      <visual name="link_4_visual">
+        <geometry>
+          <mesh>
+            <uri>file:///home/jjasper/blender-sdf-quick/mesh_stl/link_4.stl</uri>
+          </mesh>
+        </geometry>
+        <pose>-0.06297148764133453 7.682012557983398 -1.8433781862258911 -0.8198698163032532 0.0015970997046679258 -0.062675341963768</pose>
+      </visual>
+    </link>
+    <link name="link_1">
+      <pose>-1.0842769145965576 -3.4272618293762207 0.9305369853973389 0.0 -0.0 0.0</pose>
+      <mass>4.0</mass>
+      <inertia>
+        <ixx>6.99377890451164</ixx>
+        <iyy>0.2889154592763828</iyy>
+        <izz>6.993778930670563</izz>
+        <ixy>0</ixy>
+        <ixz>0</ixz>
+        <iyz>0</iyz>
+      </inertia>
+      <visual name="link_1_visual">
+        <geometry>
+          <mesh>
+            <uri>file:///home/jjasper/blender-sdf-quick/mesh_stl/link_1.stl</uri>
+          </mesh>
+        </geometry>
+        <pose>1.0842769145965576 3.4272618293762207 -0.9305369853973389 -0.0 -0.0 -0.0</pose>
+      </visual>
+    </link>
+    <joint name="joint_2" type="revolute">
+      <parent>link_1</parent>
+      <child>link_2</child>
+      <pose>0.003118276596069336 2.228597640991211 -0.031485676765441895 0.0 -0.0 -0.285022109746933</pose>
+      <axis>
+        <xyz>0 0 1</xyz>
+      </axis>
+    </joint>
+    <link name="link_2">
+      <pose>-0.5370225310325623 -7.839982509613037 0.9305369853973389 0.0 -0.0 0.285022109746933</pose>
+      <mass>2.0</mass>
+      <inertia>
+        <ixx>2.689520649355633</ixx>
+        <iyy>0.045707965377933604</iyy>
+        <izz>2.689520649355633</izz>
+        <ixy>0</ixy>
+        <ixz>0</ixz>
+        <iyz>0</iyz>
+      </inertia>
+      <visual name="link_2_visual">
+        <geometry>
+          <mesh>
+            <uri>file:///home/jjasper/blender-sdf-quick/mesh_stl/link_2.stl</uri>
+          </mesh>
+        </geometry>
+        <pose>2.719792604446411 7.372683048248291 -0.9305369853973389 -0.0 -0.0 -0.285022109746933</pose>
+      </visual>
+    </link>
+    <joint name="joint_6" type="revolute">
+      <parent>link_2</parent>
+      <child>link_5</child>
+      <pose>0.15390953421592712 2.0796074867248535 -0.053004682064056396 -0.13935260474681854 -0.24574969708919525 -0.00928269512951374</pose>
+      <axis>
+        <xyz>0 0 1</xyz>
+      </axis>
+    </joint>
+    <link name="link_5">
+      <pose>0.5689255595207214 -11.94229507446289 0.9480975866317749 0.0 -0.0 0.285022109746933</pose>
+      <mass>1.0</mass>
+      <inertia>
+        <ixx>1.3447603246778166</ixx>
+        <iyy>0.022853982688966802</iyy>
+        <izz>1.3447603246778166</izz>
+        <ixy>0</ixy>
+        <ixz>0</ixz>
+        <iyz>0</iyz>
+      </inertia>
+      <visual name="link_5_visual">
+        <geometry>
+          <mesh>
+            <uri>file:///home/jjasper/blender-sdf-quick/mesh_stl/link_5.stl</uri>
+          </mesh>
+        </geometry>
+        <pose>2.811946153640747 11.620457649230957 -0.9480976462364197 -0.0 -0.0 -0.285022109746933</pose>
+      </visual>
+    </link>
+  </model>
+</sdf>
