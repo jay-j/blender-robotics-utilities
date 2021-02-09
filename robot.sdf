@@ -36,8 +36,8 @@
       <axis>
         <xyz>1 0 0</xyz>
         <limit>
-          <lower>-0.2617993950843811</lower>
-          <upper>0.2617993950843811</upper>
+          <lower>0.0</lower>
+          <upper>0.7853981852531433</upper>
         </limit>
       </axis>
     </joint>
@@ -48,8 +48,8 @@
       <axis>
         <xyz>0 1 0</xyz>
         <limit>
-          <lower>-1.0000003576278687</lower>
-          <upper>1.0000003576278687</upper>
+          <lower>-0.12300000339746475</lower>
+          <upper>0.10100000351667404</upper>
         </limit>
       </axis>
     </joint>
