@@ -60,7 +60,7 @@ def get_joint_subtype(obj):
         if obj.sk_axis_x_limit or obj.sk_axis_y_limit or obj.sk_axis_z_limit:
             return "revolute"
         else:
-            return "revolute" #"continuous"
+            return "revolute" #TODO "continuous" is the right answer, but revolute is what DARTsim supports?
     else:
         return obj.enum_joint_type
 
@@ -189,8 +189,12 @@ def export_joint(context, obj, xml_model):
         # build nicer arrays of axis properties, with 0,1,2 as xyz
         axis_enabled = [obj.sk_axis_x_enabled, obj.sk_axis_y_enabled, obj.sk_axis_z_enabled]
         axis_limit = [obj.sk_axis_x_limit, obj.sk_axis_y_limit, obj.sk_axis_z_limit]
-        axis_lower = [obj.sk_axis_x_lower, obj.sk_axis_y_lower, obj.sk_axis_z_lower]
-        axis_upper = [obj.sk_axis_x_upper, obj.sk_axis_y_upper, obj.sk_axis_z_upper]
+        if ['prismatic'].count(joint_subtype) > 0:
+            axis_lower = [obj.sk_axis_x_lower_lin, obj.sk_axis_y_lower_lin, obj.sk_axis_z_lower_lin]
+            axis_upper = [obj.sk_axis_x_upper_lin, obj.sk_axis_y_upper_lin, obj.sk_axis_z_upper_lin]
+        else:
+            axis_lower = [obj.sk_axis_x_lower_rot, obj.sk_axis_y_lower_rot, obj.sk_axis_z_lower_rot]
+            axis_upper = [obj.sk_axis_x_upper_rot, obj.sk_axis_y_upper_rot, obj.sk_axis_z_upper_rot]
         
         # figure out which axis is to be axis1
         axis1 = -1
@@ -340,8 +344,6 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
             row = layout.row()
             row.prop(obj, "sk_joint_child")
         
-            # TODO better to detect property changes to the parent/child so they can be marked/unmarked rather than searching at export time for them
-            
             row = layout.row()
             row.label(text="Joint Properties")
                    
@@ -371,8 +373,12 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
                 row.enabled = obj.sk_axis_x_enabled
                 
                 col = axis_layout_x.column()
-                col.prop(obj, 'sk_axis_x_lower', text='lower limit')
-                col.prop(obj, 'sk_axis_x_upper', text='upper limit')
+                if obj.enum_joint_type == 'prismatic':
+                    col.prop(obj, 'sk_axis_x_lower_lin', text='lower limit')
+                    col.prop(obj, 'sk_axis_x_upper_lin', text='upper limit')
+                else:   
+                    col.prop(obj, 'sk_axis_x_lower_rot', text='lower limit')
+                    col.prop(obj, 'sk_axis_x_upper_rot', text='upper limit')
                 col.enabled = obj.sk_axis_x_limit
                 # TODO Prevent setting limits for ball joints
                 
@@ -386,8 +392,12 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
                 row.enabled = obj.sk_axis_y_enabled
                 
                 col = axis_layout_y.column()
-                col.prop(obj, 'sk_axis_y_lower', text='lower limit')
-                col.prop(obj, 'sk_axis_y_upper', text='upper limit')
+                if obj.enum_joint_type == 'prismatic':
+                    col.prop(obj, 'sk_axis_y_lower_lin', text='lower limit')
+                    col.prop(obj, 'sk_axis_y_upper_lin', text='upper limit')
+                else: 
+                    col.prop(obj, 'sk_axis_y_lower_rot', text='lower limit')
+                    col.prop(obj, 'sk_axis_y_upper_rot', text='upper limit')
                 col.enabled = obj.sk_axis_y_limit
                 
                 # z axis
@@ -400,14 +410,14 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
                 row.enabled = obj.sk_axis_z_enabled
                 
                 col = axis_layout_z.column()
-                col.prop(obj, 'sk_axis_z_lower', text='lower limit')
-                col.prop(obj, 'sk_axis_z_upper', text='upper limit')
+                if obj.enum_joint_type == 'prismatic':
+                    col.prop(obj, 'sk_axis_y_lower_lin', text='lower limit')
+                    col.prop(obj, 'sk_axis_y_upper_lin', text='upper limit')
+                else: 
+                    col.prop(obj, 'sk_axis_z_lower_rot', text='lower limit')
+                    col.prop(obj, 'sk_axis_z_upper_rot', text='upper limit')
                 col.enabled = obj.sk_axis_z_limit
                 
-                
-            # TODO add limits to joint angles
-            # TODO additional joint types
-        
 
 enum_joint_type_options = [
     ('revolute', 'Revolute', '', 1),
@@ -430,6 +440,7 @@ enum_sk_type = [
 def register():
     # step angle for UI drags
     step_angle_ui = 1500 # about 15 degrees
+    step_lin_ui = 10 # 0.1m
     
     # create the needed properties
     bpy.types.Object.enum_sk_type = bpy.props.EnumProperty(items=enum_sk_type)
@@ -439,19 +450,25 @@ def register():
     bpy.types.Object.sk_joint_child = bpy.props.PointerProperty(type=bpy.types.Object, name="sk_joint_child", description="Simple Kinematics Joint Child Object", update=None)
     bpy.types.Object.sk_mass = bpy.props.FloatProperty(name='sk_mass', default=1)
     bpy.types.Object.sk_axis_x_enabled = bpy.props.BoolProperty(name="X", default=False)
-    bpy.types.Object.sk_axis_x_limit = bpy.props.BoolProperty(name="limit", default=False)
-    bpy.types.Object.sk_axis_x_lower = bpy.props.FloatProperty(name="lower", default=0, soft_min=-2*pi, soft_max=2*pi, unit="ROTATION", step=step_angle_ui)
-    bpy.types.Object.sk_axis_x_upper = bpy.props.FloatProperty(name="upper", default=0, soft_min=-2*pi, soft_max=2*pi, unit="ROTATION", step=step_angle_ui)
+    bpy.types.Object.sk_axis_x_limit = bpy.props.BoolProperty(name="x_limit", default=False)
+    bpy.types.Object.sk_axis_x_lower_rot = bpy.props.FloatProperty(name="x_lower_rot", default=0, soft_min=-2*pi, soft_max=2*pi, unit="ROTATION", step=step_angle_ui)
+    bpy.types.Object.sk_axis_x_upper_rot = bpy.props.FloatProperty(name="x_upper_rot", default=0, soft_min=-2*pi, soft_max=2*pi, unit="ROTATION", step=step_angle_ui)
+    bpy.types.Object.sk_axis_x_lower_lin = bpy.props.FloatProperty(name="x_lower_lin", default=0, soft_min=-1, soft_max=1, unit="LENGTH", step=step_lin_ui)
+    bpy.types.Object.sk_axis_x_upper_lin = bpy.props.FloatProperty(name="x_upper_lin", default=0, soft_min=-1, soft_max=1, unit="LENGTH", step=step_lin_ui)
     
     bpy.types.Object.sk_axis_y_enabled = bpy.props.BoolProperty(name="Y", default=False)
-    bpy.types.Object.sk_axis_y_limit = bpy.props.BoolProperty(name="limit", default=False)
-    bpy.types.Object.sk_axis_y_lower = bpy.props.FloatProperty(name="lower", default=0, soft_min=-2*pi, soft_max=2*pi, unit="ROTATION", step=step_angle_ui)
-    bpy.types.Object.sk_axis_y_upper = bpy.props.FloatProperty(name="upper", default=0, soft_min=-2*pi, soft_max=2*pi, unit="ROTATION", step=step_angle_ui)
+    bpy.types.Object.sk_axis_y_limit = bpy.props.BoolProperty(name="y_limit", default=False)
+    bpy.types.Object.sk_axis_y_lower_rot = bpy.props.FloatProperty(name="y_lower_rot", default=0, soft_min=-2*pi, soft_max=2*pi, unit="ROTATION", step=step_angle_ui)
+    bpy.types.Object.sk_axis_y_upper_rot = bpy.props.FloatProperty(name="y_upper_rot", default=0, soft_min=-2*pi, soft_max=2*pi, unit="ROTATION", step=step_angle_ui)
+    bpy.types.Object.sk_axis_y_lower_lin = bpy.props.FloatProperty(name="y_lower_lin", default=0, soft_min=-1, soft_max=1, unit="LENGTH", step=step_lin_ui)
+    bpy.types.Object.sk_axis_y_upper_lin = bpy.props.FloatProperty(name="y_upper_lin", default=0, soft_min=-1, soft_max=1, unit="LENGTH", step=step_lin_ui)
     
     bpy.types.Object.sk_axis_z_enabled = bpy.props.BoolProperty(name="Z", default=True)
-    bpy.types.Object.sk_axis_z_limit = bpy.props.BoolProperty(name="limit", default=False)
-    bpy.types.Object.sk_axis_z_lower = bpy.props.FloatProperty(name="lower", default=0, soft_min=-2*pi, soft_max=2*pi, unit="ROTATION", step=step_angle_ui)
-    bpy.types.Object.sk_axis_z_upper = bpy.props.FloatProperty(name="upper", default=0, soft_min=-2*pi, soft_max=2*pi, unit="ROTATION", step=step_angle_ui)
+    bpy.types.Object.sk_axis_z_limit = bpy.props.BoolProperty(name="z_limit", default=False)
+    bpy.types.Object.sk_axis_z_lower_rot = bpy.props.FloatProperty(name="z_lower_rot", default=0, soft_min=-2*pi, soft_max=2*pi, unit="ROTATION", step=step_angle_ui)
+    bpy.types.Object.sk_axis_z_upper_rot = bpy.props.FloatProperty(name="z_upper_rot", default=0, soft_min=-2*pi, soft_max=2*pi, unit="ROTATION", step=step_angle_ui)
+    bpy.types.Object.sk_axis_z_lower_lin = bpy.props.FloatProperty(name="z_lower_lin", default=0, soft_min=-1, soft_max=1, unit="LENGTH", step=step_lin_ui)
+    bpy.types.Object.sk_axis_z_upper_lin = bpy.props.FloatProperty(name="z_upper_lin", default=0, soft_min=-1, soft_max=1, unit="LENGTH", step=step_lin_ui)
     
     bpy.utils.register_class(SDFExportOperator)
     bpy.utils.register_class(SimpleKinematicsJointPanel)
