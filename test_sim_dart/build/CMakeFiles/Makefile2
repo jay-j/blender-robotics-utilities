@@ -44,16 +44,16 @@ RM = /usr/bin/cmake -E remove -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /home/jjasper/blender-sdf-quick
+CMAKE_SOURCE_DIR = /home/jjasper/blender-sdf-quick/test_sim_dart
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /home/jjasper/blender-sdf-quick/build
+CMAKE_BINARY_DIR = /home/jjasper/blender-sdf-quick/test_sim_dart/build
 
 #=============================================================================
 # Directory level rules for the build root directory
 
 # The main recursive "all" target.
-all: CMakeFiles/blender-sdf-quick.dir/all
+all: CMakeFiles/test_sim_dart.dir/all
 
 .PHONY : all
 
@@ -63,36 +63,36 @@ preinstall:
 .PHONY : preinstall
 
 # The main recursive "clean" target.
-clean: CMakeFiles/blender-sdf-quick.dir/clean
+clean: CMakeFiles/test_sim_dart.dir/clean
 
 .PHONY : clean
 
 #=============================================================================
-# Target rules for target CMakeFiles/blender-sdf-quick.dir
+# Target rules for target CMakeFiles/test_sim_dart.dir
 
 # All Build rule for target.
-CMakeFiles/blender-sdf-quick.dir/all:
-	$(MAKE) -f CMakeFiles/blender-sdf-quick.dir/build.make CMakeFiles/blender-sdf-quick.dir/depend
-	$(MAKE) -f CMakeFiles/blender-sdf-quick.dir/build.make CMakeFiles/blender-sdf-quick.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/jjasper/blender-sdf-quick/build/CMakeFiles --progress-num=1,2 "Built target blender-sdf-quick"
-.PHONY : CMakeFiles/blender-sdf-quick.dir/all
+CMakeFiles/test_sim_dart.dir/all:
+	$(MAKE) -f CMakeFiles/test_sim_dart.dir/build.make CMakeFiles/test_sim_dart.dir/depend
+	$(MAKE) -f CMakeFiles/test_sim_dart.dir/build.make CMakeFiles/test_sim_dart.dir/build
+	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --progress-dir=/home/jjasper/blender-sdf-quick/test_sim_dart/build/CMakeFiles --progress-num=1,2 "Built target test_sim_dart"
+.PHONY : CMakeFiles/test_sim_dart.dir/all
 
 # Build rule for subdir invocation for target.
-CMakeFiles/blender-sdf-quick.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/jjasper/blender-sdf-quick/build/CMakeFiles 2
-	$(MAKE) -f CMakeFiles/Makefile2 CMakeFiles/blender-sdf-quick.dir/all
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/jjasper/blender-sdf-quick/build/CMakeFiles 0
-.PHONY : CMakeFiles/blender-sdf-quick.dir/rule
+CMakeFiles/test_sim_dart.dir/rule: cmake_check_build_system
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/jjasper/blender-sdf-quick/test_sim_dart/build/CMakeFiles 2
+	$(MAKE) -f CMakeFiles/Makefile2 CMakeFiles/test_sim_dart.dir/all
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/jjasper/blender-sdf-quick/test_sim_dart/build/CMakeFiles 0
+.PHONY : CMakeFiles/test_sim_dart.dir/rule
 
 # Convenience name for target.
-blender-sdf-quick: CMakeFiles/blender-sdf-quick.dir/rule
+test_sim_dart: CMakeFiles/test_sim_dart.dir/rule
 
-.PHONY : blender-sdf-quick
+.PHONY : test_sim_dart
 
 # clean rule for target.
-CMakeFiles/blender-sdf-quick.dir/clean:
-	$(MAKE) -f CMakeFiles/blender-sdf-quick.dir/build.make CMakeFiles/blender-sdf-quick.dir/clean
-.PHONY : CMakeFiles/blender-sdf-quick.dir/clean
+CMakeFiles/test_sim_dart.dir/clean:
+	$(MAKE) -f CMakeFiles/test_sim_dart.dir/build.make CMakeFiles/test_sim_dart.dir/clean
+.PHONY : CMakeFiles/test_sim_dart.dir/clean
 
 #=============================================================================
 # Special targets to cleanup operation of make.

@@ -6,7 +6,7 @@
 
 #IncludeRegexTransform: 
 
-/home/jjasper/blender-sdf-quick/main.cpp
+/home/jjasper/blender-sdf-quick/test_sim_dart/main.cpp
 iostream
 -
 dart/dart.hpp

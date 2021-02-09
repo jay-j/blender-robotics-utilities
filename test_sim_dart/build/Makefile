@@ -48,10 +48,10 @@ RM = /usr/bin/cmake -E remove -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /home/jjasper/blender-sdf-quick
+CMAKE_SOURCE_DIR = /home/jjasper/blender-sdf-quick/test_sim_dart
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /home/jjasper/blender-sdf-quick/build
+CMAKE_BINARY_DIR = /home/jjasper/blender-sdf-quick/test_sim_dart/build
 
 #=============================================================================
 # Targets provided globally by CMake.
@@ -80,9 +80,9 @@ edit_cache/fast: edit_cache
 
 # The main all target
 all: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/jjasper/blender-sdf-quick/build/CMakeFiles /home/jjasper/blender-sdf-quick/build/CMakeFiles/progress.marks
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/jjasper/blender-sdf-quick/test_sim_dart/build/CMakeFiles /home/jjasper/blender-sdf-quick/test_sim_dart/build/CMakeFiles/progress.marks
 	$(MAKE) -f CMakeFiles/Makefile2 all
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/jjasper/blender-sdf-quick/build/CMakeFiles 0
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/jjasper/blender-sdf-quick/test_sim_dart/build/CMakeFiles 0
 .PHONY : all
 
 # The main clean target
@@ -111,17 +111,17 @@ depend:
 .PHONY : depend
 
 #=============================================================================
-# Target rules for targets named blender-sdf-quick
+# Target rules for targets named test_sim_dart
 
 # Build rule for target.
-blender-sdf-quick: cmake_check_build_system
-	$(MAKE) -f CMakeFiles/Makefile2 blender-sdf-quick
-.PHONY : blender-sdf-quick
+test_sim_dart: cmake_check_build_system
+	$(MAKE) -f CMakeFiles/Makefile2 test_sim_dart
+.PHONY : test_sim_dart
 
 # fast build rule for target.
-blender-sdf-quick/fast:
-	$(MAKE) -f CMakeFiles/blender-sdf-quick.dir/build.make CMakeFiles/blender-sdf-quick.dir/build
-.PHONY : blender-sdf-quick/fast
+test_sim_dart/fast:
+	$(MAKE) -f CMakeFiles/test_sim_dart.dir/build.make CMakeFiles/test_sim_dart.dir/build
+.PHONY : test_sim_dart/fast
 
 main.o: main.cpp.o
 
@@ -129,7 +129,7 @@ main.o: main.cpp.o
 
 # target to build an object file
 main.cpp.o:
-	$(MAKE) -f CMakeFiles/blender-sdf-quick.dir/build.make CMakeFiles/blender-sdf-quick.dir/main.cpp.o
+	$(MAKE) -f CMakeFiles/test_sim_dart.dir/build.make CMakeFiles/test_sim_dart.dir/main.cpp.o
 .PHONY : main.cpp.o
 
 main.i: main.cpp.i
@@ -138,7 +138,7 @@ main.i: main.cpp.i
 
 # target to preprocess a source file
 main.cpp.i:
-	$(MAKE) -f CMakeFiles/blender-sdf-quick.dir/build.make CMakeFiles/blender-sdf-quick.dir/main.cpp.i
+	$(MAKE) -f CMakeFiles/test_sim_dart.dir/build.make CMakeFiles/test_sim_dart.dir/main.cpp.i
 .PHONY : main.cpp.i
 
 main.s: main.cpp.s
@@ -147,7 +147,7 @@ main.s: main.cpp.s
 
 # target to generate assembly for a file
 main.cpp.s:
-	$(MAKE) -f CMakeFiles/blender-sdf-quick.dir/build.make CMakeFiles/blender-sdf-quick.dir/main.cpp.s
+	$(MAKE) -f CMakeFiles/test_sim_dart.dir/build.make CMakeFiles/test_sim_dart.dir/main.cpp.s
 .PHONY : main.cpp.s
 
 # Help Target
@@ -158,7 +158,7 @@ help:
 	@echo "... depend"
 	@echo "... rebuild_cache"
 	@echo "... edit_cache"
-	@echo "... blender-sdf-quick"
+	@echo "... test_sim_dart"
 	@echo "... main.o"
 	@echo "... main.i"
 	@echo "... main.s"

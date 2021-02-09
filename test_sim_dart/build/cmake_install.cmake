@@ -1,4 +1,4 @@
-# Install script for directory: /home/jjasper/blender-sdf-quick
+# Install script for directory: /home/jjasper/blender-sdf-quick/test_sim_dart
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
@@ -45,5 +45,5 @@ endif()
 
 string(REPLACE ";" "\n" CMAKE_INSTALL_MANIFEST_CONTENT
        "${CMAKE_INSTALL_MANIFEST_FILES}")
-file(WRITE "/home/jjasper/blender-sdf-quick/build/${CMAKE_INSTALL_MANIFEST}"
+file(WRITE "/home/jjasper/blender-sdf-quick/test_sim_dart/build/${CMAKE_INSTALL_MANIFEST}"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")

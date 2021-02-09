@@ -1,3 +1,0 @@
-/home/jjasper/blender-sdf-quick/build/CMakeFiles/rebuild_cache.dir
-/home/jjasper/blender-sdf-quick/build/CMakeFiles/edit_cache.dir
-/home/jjasper/blender-sdf-quick/build/CMakeFiles/blender-sdf-quick.dir
