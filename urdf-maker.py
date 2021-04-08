@@ -1,7 +1,6 @@
 # Simple URDF Kinematics Exporter for Blender
 # Jay J.
-# 2020
-
+# 2021
 
 ### docs; model structure
 # any mesh, any shape
@@ -16,8 +15,7 @@
 # joint can only have one parent link and child link
 # links can have unlimited related joints
 
-# spits out the .urdf file in the current (blender) directory
-# spits out the .stl files in a subdirectory mesh_stl, will create this if it needs to
+# spits out a directory structure with some boilerplate files so ros will take them
 
 import bpy
 import time
@@ -37,11 +35,127 @@ def xml_pretty(elem):
     reparsed = minidom.parseString(rough_string)
     return reparsed.toprettyxml(indent="  ")
 
+def create_folder(folder_name):
+    working_dir = bpy.path.abspath('//')
+    path = os.path.join(working_dir, folder_name)
+    
+    try:
+        os.mkdir(path)
+    except FileExistsError:
+        pass
+
+def boilerplate_config(robot_name):
+    create_folder(robot_name + "/config")
+    
+    # create this joint name thing
+    working_dir = bpy.path.abspath("//")
+    path = os.path.join(working_dir, robot_name + "/config/joint_names_" + robot_name + ".yaml")
+    fd = open(path, 'w')
+    fd.write("controller_joint_names: ['', ]")
+    fd.close()
+
+def boilerplate_launch(robot_name):
+    create_folder(robot_name + "/launch")
+    
+    # display.launch file
+    xml_display = Element("launch")
+    
+    xml_display_1 = SubElement(xml_display, 'arg')
+    xml_display_1.set("name", "model")
+    
+    xml_display_2 = SubElement(xml_display, 'arg')
+    xml_display_2.set("name", "gui")
+    xml_display_2.set("default", "False")
+    
+    xml_description = SubElement(xml_display, "param")
+    xml_description.set("name", "robot_description")
+    xml_description.set("textfile", "$(find " + robot_name + ")/urdf/" + robot_name + ".urdf")
+    
+    xml_usegui = SubElement(xml_display, "param")
+    xml_usegui.set("name", "use_gui")
+    xml_usegui.set("value", "$(arg gui)")
+    
+    xml_joint = SubElement(xml_display, "node")
+    xml_joint.set("name", "joint_state_publisher")
+    xml_joint.set("pkg", "joint_state_publisher")
+    xml_joint.set("type", "joint_state_publisher")
+    
+    xml_state = SubElement(xml_display, "node")
+    xml_state.set("name", "robot_state_publisher")
+    xml_state.set("pkg", "robot_state_publisher")
+    xml_state.set("type", "state_publisher") # TODO future robot_state_publisher
+    
+    xml_rviz = SubElement(xml_display, "node")
+    xml_rviz.set("name", "rviz")
+    xml_rviz.set("pkg", "rviz")
+    xml_rviz.set("type", "rviz")
+    xml_rviz.set("args", "-d $(find " + robot_name + ")/urdf.rviz")
+    
+    xml_pretty_string = xml_pretty(xml_display)
+    fd = open(bpy.path.abspath('//'+robot_name+'/launch/display.launch'), 'w')
+    fd.write(xml_pretty_string)
+    fd.close()
+
+    # gazebo.launch file
+    xml_gazebo = Element("launch")
+    
+    xml_include = SubElement(xml_gazebo, "include")
+    xml_include.set("file", "$(find gazebo_ros)/launch/empty_world.launch")
+    
+    xml_tf = SubElement(xml_gazebo, "node")
+    xml_tf.set("name", "tf_footprint_base")
+    xml_tf.set("pkg", "tf")
+    xml_tf.set("type", "static_transform_publisher")
+    xml_tf.set("args", "0 0 0 0 0 0 base_link base_footprint 40") # TODO update to use the robot's base link?
+    
+    xml_spawn = SubElement(xml_gazebo, "node")
+    xml_spawn.set("name", "spawn_model")
+    xml_spawn.set("pkg", "gazebo_ros")
+    xml_spawn.set("type", "spawn_model")
+    xml_spawn.set("args", "-file $(find " + robot_name + ")/urdf/" + robot_name + ".urdf -urdf -model " + robot_name)
+    xml_spawn.set("output", "screen")
+    
+    xml_topic = SubElement(xml_gazebo, "node")
+    xml_topic.set("name", "fake_joint_calibration")
+    xml_topic.set("pkg", "rostopic")
+    xml_topic.set("type", "rostopic")
+    xml_topic.set("args", "pub /calibrated std_msgs/Bool true")
+    
+    xml_pretty_string = xml_pretty(xml_gazebo)
+    fd = open(bpy.path.abspath('//'+robot_name+'/launch/gazebo.launch'), 'w')
+    fd.write(xml_pretty_string)
+    fd.close()
+
+def boilerplate_cmake(robot_name):
+    fd = open(bpy.path.abspath("//"+robot_name+"/CMakeLists.txt"), "w")
+    fd.write("cmake_minimum_required(VERSION 2.8.3)\nproject(" + robot_name +")\nfind_package(catkin REQUIRED)\ncatkin_package()\nfind_package(roslaunch)\nforeach(dir config launch meshes urdf)\n\tinstall(DIRECTORY ${dir}/\n\t\tDESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/${dir})\nendforeach(dir)")
+    fd.close()
+
+def boilerplate_package(robot_name):
+    fd = open(bpy.path.abspath("//"+robot_name+"/package.xml"), "w")
+    fd.write("<package format=\"2\">\n<name>"+robot_name+"</name>\n<version>1.0.0</version>\n<description>\n<p>URDF Description package for "+robot_name+"</p>\n<p>This package contains configuration data, 3D models and launch files for " + robot_name + " robot</p>\n</description>\n <author>TODO</author>\n<maintainer email=\"TODO@email.com\" />\n<license>BSD</license>\n<buildtool_depend>catkin</buildtool_depend>\n<depend>roslaunch</depend>\n<depend>robot_state_publisher</depend>\n<depend>rviz</depend>\n<depend>joint_state_publisher</depend>\n<depend>gazebo</depend>\n<export>\n<architecture_independent />\n</export>\n</package>")
+    fd.close()
+
+def boilerplate(robot_name):
+    create_folder(robot_name)
+    create_folder(robot_name + "/meshes")
+    create_folder(robot_name + "/textures")
+    create_folder(robot_name + "/urdf")
+    
+    boilerplate_config(robot_name)
+    boilerplate_launch(robot_name)
+    boilerplate_cmake(robot_name)
+    boilerplate_package(robot_name)
+   
+    print("done creating boilerplate")
+
+####################################################################################################################################
 # explores all objects in context.scene.objects to 
 # tells links which joints are DOWNSTREAM of them
 def build_kinematic_tree(context):
     for obj in context.scene.objects:
         obj['sk_link_child_joints'] = {}
+        obj['sk_link_parent_joint'] = None
     
     for obj in context.scene.objects:
         if not( obj.sk_joint_parent == None):
@@ -83,8 +197,31 @@ def inertia_of_box(obj):
     inertia['iyz'] = 0
     return inertia
 
+def xml_origin_wrt_parent(context, obj, xml_entity):
+     # get pose relative to parent joint
+    if obj['sk_link_parent_joint'] == None:
+        pose_wrt_parent = obj.matrix_world
+    else:
+        pose_wrt_parent = obj['sk_link_parent_joint'].matrix_world.inverted() @ obj.matrix_world
+    
+    pose_xyz = ''
+    pose_xyz += repr(pose_wrt_parent.translation[0]) + " "
+    pose_xyz += repr(pose_wrt_parent.translation[1]) + " "
+    pose_xyz += repr(pose_wrt_parent.translation[2]) + " "
+    rot = pose_wrt_parent.to_euler('XYZ')
+    pose_rpy = ''
+    pose_rpy += repr(rot.x) + " "
+    pose_rpy += repr(rot.y) + " "
+    pose_rpy += repr(rot.z)
+
+    xml_inertial_origin = SubElement(xml_entity, 'origin')
+    xml_inertial_origin.set('xyz', pose_xyz)
+    xml_inertial_origin.set('rpy', pose_rpy)
+    
+
 def export_link_inertial(context, obj, xml_link):
     xml_inertial = SubElement(xml_link, 'inertial')
+    xml_origin_wrt_parent(context, obj, xml_inertial)
     
     xml_mass = SubElement(xml_inertial, 'mass')
     xml_mass.set('value', repr(obj.sk_mass))
@@ -93,10 +230,8 @@ def export_link_inertial(context, obj, xml_link):
     inertia = inertia_of_box(obj)
     for i in inertia:
         xml_inertia.set(i, repr(inertia[i]))
-        #xml_i = SubElement(xml_inertia, i)
-        #xml_i.text = repr(inertia[i])
 
-def export_link_stl(context, obj, xml_link):
+def export_stl(context, obj, xml_geometry):
     # store the active object so it can be restored later
     sel_obj = bpy.context.view_layer.objects.active
     
@@ -109,60 +244,70 @@ def export_link_stl(context, obj, xml_link):
     bpy.ops.object.select_all(action='DESELECT')
     obj.select_set(True)
     
-    bpy.ops.export_mesh.stl(filepath=bpy.path.abspath('//mesh_stl/' + obj.name + '.stl'), use_selection=True)
+    bpy.ops.export_mesh.stl(filepath=bpy.path.abspath('//'+context.scene.robot_name+'/meshes/' + obj.name + '.stl'), use_selection=True)
     
     # restore selection
     bpy.ops.object.select_all(action='DESELECT')
     sel_obj.select_set(True)
     
+    xml_mesh = SubElement(xml_geometry, 'mesh')
+    xml_mesh.set('filename', 'package://'+ context.scene.robot_name + "/meshes/" + obj.name + '.stl')
+    
+
+def export_link_collision_stl(context, obj, xml_link):
+    xml_collision = SubElement(xml_link, 'collision')
+    
+    # change to collision object if one is defined
+    if obj.sk_link_collision == None:
+        obj_collision = obj
+    else:
+        obj_collision = obj.sk_link_collision
+        obj_collision["sk_link_parent_joint"] = obj["sk_link_parent_joint"]
+    
+    xml_origin_wrt_parent(context, obj_collision, xml_collision)
+
+    xml_geometry = SubElement(xml_collision, 'geometry')
+    export_stl(context, obj_collision, xml_geometry)
+
+def export_link_visual_stl(context, obj, xml_link):
     # get the pose
     xml_visual = SubElement(xml_link, 'visual')
-    xml_geometry = SubElement(xml_visual, 'geometry')
-    
-    xform = obj.matrix_world.inverted()
-    pose = ''
-    pose += repr(xform.translation[0]) + " "
-    pose += repr(xform.translation[1]) + " "
-    pose += repr(xform.translation[2]) + " "
-    rot = xform.to_euler('XYZ')
-    pose += repr(rot.x) + " "
-    pose += repr(rot.y) + " "
-    pose += repr(rot.z)
-    
-    xml_mesh = SubElement(xml_geometry, 'mesh')
-    xml_mesh.set('filename', 'package://'+ bpy.path.abspath('//mesh_stl/' + obj.name + '.stl')) # TDO relative path?
 
-    xml_geo_pose = SubElement(xml_visual, 'pose')
-    xml_geo_pose.text = pose
+    # pose is different here because we don't control the STL origin so we need to compensate for that
+    if obj['sk_link_parent_joint'] == None:
+        pose_wrt_parent = obj.matrix_world
+    else:
+        pose_wrt_parent = obj['sk_link_parent_joint'].matrix_world.inverted()
+    
+    pose_xyz = ''
+    pose_xyz += repr(pose_wrt_parent.translation[0]) + " "
+    pose_xyz += repr(pose_wrt_parent.translation[1]) + " "
+    pose_xyz += repr(pose_wrt_parent.translation[2]) + " "
+    rot = pose_wrt_parent.to_euler('XYZ')
+    pose_rpy = ''
+    pose_rpy += repr(rot.x) + " "
+    pose_rpy += repr(rot.y) + " "
+    pose_rpy += repr(rot.z)
+
+    xml_inertial_origin = SubElement(xml_visual, 'origin')
+    xml_inertial_origin.set('xyz', pose_xyz)
+    xml_inertial_origin.set('rpy', pose_rpy)
+
+    xml_geometry = SubElement(xml_visual, 'geometry')
+    export_stl(context, obj, xml_geometry)
     
 # https://wiki.ros.org/urdf/XML
 # http://wiki.ros.org/urdf/Tutorials
 # exports xml data for a link entity
 def export_link(context, obj, xml_model):
     print("exporting link", obj.name)
+    
     xml_link = SubElement(xml_model, 'link')
     xml_link.set('name', obj.name)
-    
-    # pose is initial pose relative to the model frame
-    # use blender origin as model frame origin
-    xml_link_origin = SubElement(xml_link, 'origin') # TODO check conventions here.. need to modify to be relative to parent??!
-    origin_xyz = ""
-    origin_xyz += repr(obj.matrix_world.translation[0]) + " "
-    origin_xyz += repr(obj.matrix_world.translation[1]) + " "
-    origin_xyz += repr(obj.matrix_world.translation[2]) + " "
-    
-    rot = obj.matrix_world.to_euler('XYZ')
-    origin_rpy = ""
-    origin_rpy += repr(rot.x) + " "
-    origin_rpy += repr(rot.y) + " "
-    origin_rpy += repr(rot.z)
-    
-    #xml_link_pose.text = pose
-    xml_link_origin.set('xyz', origin_xyz)
-    xml_link_origin.set('rpy', origin_rpy)
-    
+        
     export_link_inertial(context, obj, xml_link)
-    export_link_stl(context, obj, xml_link)
+    export_link_visual_stl(context, obj, xml_link)
+    export_link_collision_stl(context, obj, xml_link)
 
 # exports xml data for a joint entity
 def export_joint(context, obj, xml_model):
@@ -178,20 +323,23 @@ def export_joint(context, obj, xml_model):
     xml_joint_child = SubElement(xml_joint, 'child')
     xml_joint_child.set('link', obj.sk_joint_child.name)
     
-    # TODO update to handle more types. seems like this could be a good use of OOP...
-    # pose: where the joint is relative to the child frame, in the child frame
+    # pose: where the joint is relative to the parent frame, in the parent JOINT frame
     # x y z angle angle angle (Euler roll pitch yaw; extrinsic x-y-z rotation)
     xml_joint_origin = SubElement(xml_joint, 'origin')
-    pose_wrt_child = obj.sk_joint_child.matrix_world.inverted() @ obj.matrix_world # the '@' notation means matrix (not element) multiplication
 
-    # TODO URDF may reverse this convention?!
+    if obj.sk_joint_parent['sk_link_parent_joint'] == None:
+        pose_wrt_parent = obj.matrix_world
+    else:
+        pose_wrt_parent = obj.sk_joint_parent['sk_link_parent_joint'].matrix_world.inverted() @ obj.matrix_world
+        
+    print("  transform wrt parent:\n", pose_wrt_parent)
 
     origin_xyz = ""
-    origin_xyz += repr(pose_wrt_child.translation[0]) + " "
-    origin_xyz += repr(pose_wrt_child.translation[1]) + " "
-    origin_xyz += repr(pose_wrt_child.translation[2]) + " "
+    origin_xyz += repr(pose_wrt_parent.translation[0]) + " "
+    origin_xyz += repr(pose_wrt_parent.translation[1]) + " "
+    origin_xyz += repr(pose_wrt_parent.translation[2]) + " "
     
-    rot = pose_wrt_child.to_euler('XYZ')
+    rot = pose_wrt_parent.to_euler('XYZ')
     origin_rpy = ""
     origin_rpy += repr(rot.x) + " "
     origin_rpy += repr(rot.y) + " "
@@ -259,10 +407,6 @@ def export_tree(context):
     root = context.object
     export_start_time = time.time()
     
-    if not os.path.exists(bpy.path.abspath('//mesh_stl')):
-        print('Did not find mesh folder, creating it')
-        os.makedirs(bpy.path.abspath('//mesh_stl'))
-    
     xml_root = Element('robot')
     xml_root.set('name', "robot_"+root.name)
     
@@ -283,11 +427,10 @@ def export_tree(context):
                 
                 # mark link as visited so don't come back to it
                 joint.sk_joint_child['sk_export_time'] = export_start_time
+                joint.sk_joint_child['sk_link_parent_joint'] = joint
                 
     xml_pretty_string = xml_pretty(xml_root)
-    print(xml_pretty_string)
-    fd = open(bpy.path.abspath('//robot.urdf'), 'w')
-    #fd = open(bpy.path.abspath('//robot_' + root.name + '.urdf'), 'w')
+    fd = open(bpy.path.abspath("//"+context.scene.robot_name+"/urdf/" + context.scene.robot_name + ".urdf"), "w")
     fd.write(xml_pretty_string)
     fd.close()
     
@@ -304,6 +447,8 @@ class URDFExportOperator(bpy.types.Operator):
     
     def execute(self, context):
         print('Export action called, root object=', context.object)
+        context.scene.robot_name = context.object.name
+        boilerplate(context.scene.robot_name)
         build_kinematic_tree(context)
         export_tree(context)
         print('export, successful')
@@ -341,6 +486,9 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
         if obj.enum_sk_type == 'link':
             row = layout.row()
             row.prop(obj, 'sk_mass', text='Mass (kg)')
+            
+            row = layout.row()
+            row.prop(obj, 'sk_link_collision', text='Collision Mesh (optional)')
                     
             row = layout.row()
             row.operator('sk.export_urdf', text="Export using this object as root").action = 'URDF'
@@ -458,6 +606,7 @@ def register():
     bpy.types.Object.enum_joint_axis = bpy.props.EnumProperty(items=enum_joint_axis_options, options = {"ENUM_FLAG"}, default={'x'})
     bpy.types.Object.sk_joint_parent = bpy.props.PointerProperty(type=bpy.types.Object, name="sk_joint_parent", description="Simple Kinematics Joint Parent Object", update=None)
     bpy.types.Object.sk_joint_child = bpy.props.PointerProperty(type=bpy.types.Object, name="sk_joint_child", description="Simple Kinematics Joint Child Object", update=None)
+    bpy.types.Object.sk_link_collision = bpy.props.PointerProperty(type=bpy.types.Object, name="sk_link_collision", description="Simple Kinematics Link Collision Object", update=None)
     bpy.types.Object.sk_mass = bpy.props.FloatProperty(name='sk_mass', default=1)
     bpy.types.Object.sk_axis_x_enabled = bpy.props.BoolProperty(name="X", default=False)
     bpy.types.Object.sk_axis_x_limit = bpy.props.BoolProperty(name="x_limit", default=False)
@@ -480,6 +629,8 @@ def register():
     bpy.types.Object.sk_axis_z_lower_lin = bpy.props.FloatProperty(name="z_lower_lin", default=0, soft_min=-1, soft_max=1, unit="LENGTH", step=step_lin_ui)
     bpy.types.Object.sk_axis_z_upper_lin = bpy.props.FloatProperty(name="z_upper_lin", default=0, soft_min=-1, soft_max=1, unit="LENGTH", step=step_lin_ui)
     
+    bpy.types.Scene.robot_name = bpy.props.StringProperty(name="robot_name", default="")
+    
     bpy.utils.register_class(URDFExportOperator)
     bpy.utils.register_class(SimpleKinematicsJointPanel)
 
@@ -490,8 +641,10 @@ def unregister():
     del bpy.types.Object.enum_joint_axis
     del bpy.types.Object.sk_joint_parent
     del bpy.types.Object.sk_joint_child
+    del bpy.types.Object.sk_link_collision
     del bpy.types.Object.enum_sk_type
     del bpy.types.Object.sk_mass
+    del bpy.types.Scene.robot_name
 
 if __name__ == "__main__":
     register()
