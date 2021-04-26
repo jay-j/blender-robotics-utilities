@@ -84,7 +84,22 @@ def export_link_inertial(context, obj, xml_link):
         xml_i = SubElement(xml_inertia, i)
         xml_i.text = repr(inertia[i])
 
-def export_link_stl(context, obj, xml_link):
+def xml_pose(context, obj, xml_entity):
+    xform = obj.matrix_world.inverted()
+    pose = ''
+    pose += repr(xform.translation[0]) + " "
+    pose += repr(xform.translation[1]) + " "
+    pose += repr(xform.translation[2]) + " "
+    rot = xform.to_euler('XYZ')
+    pose += repr(rot.x) + " "
+    pose += repr(rot.y) + " "
+    pose += repr(rot.z)
+    
+    xml_pose = SubElement(xml_entity, 'pose')
+    xml_pose.text = pose
+
+
+def export_stl(context, obj, xml_geometry):
     # store the active object so it can be restored later
     sel_obj = bpy.context.view_layer.objects.active
     
@@ -103,27 +118,37 @@ def export_link_stl(context, obj, xml_link):
     bpy.ops.object.select_all(action='DESELECT')
     sel_obj.select_set(True)
     
+    xml_mesh = SubElement(xml_geometry, "mesh")
+    xml_uri = SubElement(xml_mesh, "uri")
+    xml_uri.text = 'file://'+ bpy.path.abspath('//mesh_stl/' + obj.name + '.stl')
+    
+def export_link_stl_collision(context, obj, xml_link):
+    xml_collision = SubElement(xml_link, "collision")
+    xml_collision.set("name", obj.name+"_collision")
+
+    # change to collision object if one is defined
+    if obj.sk_link_collision == None:
+        obj_collision = obj
+    else:
+        obj_collision = obj.sk_link_collision
+        #obj_collision["sk_link_parent_joint"] = obj["sk_link_parent_joint"]
+
+    xml_pose(context, obj_collision, xml_collision)
+
+    xml_geometry = SubElement(xml_collision, "geometry")
+    export_stl(context, obj, xml_geometry)
+
+def export_link_stl_visual(context, obj, xml_link):   
     # get the pose
     xml_visual = SubElement(xml_link, 'visual')
     xml_visual.set('name', obj.name + '_visual')
     xml_geometry = SubElement(xml_visual, 'geometry')
     
-    xform = obj.matrix_world.inverted()
-    pose = ''
-    pose += repr(xform.translation[0]) + " "
-    pose += repr(xform.translation[1]) + " "
-    pose += repr(xform.translation[2]) + " "
-    rot = xform.to_euler('XYZ')
-    pose += repr(rot.x) + " "
-    pose += repr(rot.y) + " "
-    pose += repr(rot.z)
-    
-    xml_mesh = SubElement(xml_geometry, 'mesh')
-    xml_mesh_uri = SubElement(xml_mesh, 'uri')
-    xml_mesh_uri.text = 'file://'+ bpy.path.abspath('//mesh_stl/' + obj.name + '.stl')
+    xml_pose(context, obj, xml_visual)
 
-    xml_geo_pose = SubElement(xml_visual, 'pose')
-    xml_geo_pose.text = pose
+    export_stl(context, obj, xml_geometry)
+
+
     
 
 # http://sdformat.org/tutorials?tut=spec_model_kinematics&cat=specification&
@@ -149,7 +174,8 @@ def export_link(context, obj, xml_model):
     xml_link_pose.text = pose
     
     export_link_inertial(context, obj, xml_link)
-    export_link_stl(context, obj, xml_link)
+    export_link_stl_visual(context, obj, xml_link)
+    export_link_stl_collision(context, obj, xml_link)
 
 # exports xml data for a joint entity
 # warning there is a difference in joint definitions between SDF versions 1.4 and later    
@@ -275,7 +301,7 @@ def export_tree(context):
                 
     xml_pretty_string = xml_pretty(xml_root)
     print(xml_pretty_string)
-    fd = open(bpy.path.abspath('//robot.sdf'), 'w')
+    fd = open(bpy.path.abspath('//rover.sdf'), 'w')
     #fd = open(bpy.path.abspath('//robot_' + root.name + '.sdf'), 'w')
     fd.write(xml_pretty_string)
     fd.close()
@@ -331,6 +357,9 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
             row = layout.row()
             row.prop(obj, 'sk_mass', text='Mass (kg)')
                     
+            row = layout.row()
+            row.prop(obj, 'sk_link_collision', text='Collision Mesh (optional)')
+
             row = layout.row()
             row.operator('sk.export_sdf', text="Export using this object as root").action = 'SDF'
 
@@ -448,6 +477,7 @@ def register():
     bpy.types.Object.enum_joint_axis = bpy.props.EnumProperty(items=enum_joint_axis_options, options = {"ENUM_FLAG"}, default={'x'})
     bpy.types.Object.sk_joint_parent = bpy.props.PointerProperty(type=bpy.types.Object, name="sk_joint_parent", description="Simple Kinematics Joint Parent Object", update=None)
     bpy.types.Object.sk_joint_child = bpy.props.PointerProperty(type=bpy.types.Object, name="sk_joint_child", description="Simple Kinematics Joint Child Object", update=None)
+    bpy.types.Object.sk_link_collision = bpy.props.PointerProperty(type=bpy.types.Object, name="sk_link_collision", description="Simple Kinematics Link Collision Object", update=None)
     bpy.types.Object.sk_mass = bpy.props.FloatProperty(name='sk_mass', default=1)
     bpy.types.Object.sk_axis_x_enabled = bpy.props.BoolProperty(name="X", default=False)
     bpy.types.Object.sk_axis_x_limit = bpy.props.BoolProperty(name="x_limit", default=False)
@@ -480,6 +510,7 @@ def unregister():
     del bpy.types.Object.enum_joint_axis
     del bpy.types.Object.sk_joint_parent
     del bpy.types.Object.sk_joint_child
+    del bpy.types.Object.sk_link_collision
     del bpy.types.Object.enum_sk_type
     del bpy.types.Object.sk_mass
 
