@@ -2,6 +2,7 @@
 # Jay J.
 # 2021
 
+
 ### docs; model structure
 # any mesh, any shape
 # name them nicely (link_xx)
@@ -79,11 +80,14 @@ def boilerplate_launch(robot_name):
     xml_joint.set("name", "joint_state_publisher")
     xml_joint.set("pkg", "joint_state_publisher")
     xml_joint.set("type", "joint_state_publisher")
+    xml_joint_param = SubElement(xml_joint, "param")
+    xml_joint_param.set("name","use_gui") # TODO in noetic need joint_state_publisher_gui package and do something different here
+    xml_joint_param.set("value","True")    
     
     xml_state = SubElement(xml_display, "node")
     xml_state.set("name", "robot_state_publisher")
     xml_state.set("pkg", "robot_state_publisher")
-    xml_state.set("type", "state_publisher") # TODO future robot_state_publisher
+    xml_state.set("type", "robot_state_publisher") # TODO future robot_state_publisher
     
     xml_rviz = SubElement(xml_display, "node")
     xml_rviz.set("name", "rviz")
@@ -202,7 +206,8 @@ def xml_origin_wrt_parent(context, obj, xml_entity):
     if obj['sk_link_parent_joint'] == None:
         pose_wrt_parent = obj.matrix_world
     else:
-        pose_wrt_parent = obj['sk_link_parent_joint'].matrix_world.inverted() @ obj.matrix_world
+        # pose_wrt_parent = obj['sk_link_parent_joint'].matrix_world.inverted() @ obj.matrix_world
+        pose_wrt_parent = obj['sk_link_parent_joint'].matrix_world.inverted() # different because we don't control STL origin...
     
     pose_xyz = ''
     pose_xyz += repr(pose_wrt_parent.translation[0]) + " "
@@ -301,6 +306,7 @@ def export_link_visual_stl(context, obj, xml_link):
 # exports xml data for a link entity
 def export_link(context, obj, xml_model):
     print("exporting link", obj.name)
+    # print("parent joint is:", obj['sk_link_parent_joint'])
     
     xml_link = SubElement(xml_model, 'link')
     xml_link.set('name', obj.name)
@@ -326,6 +332,10 @@ def export_joint(context, obj, xml_model):
     # pose: where the joint is relative to the parent frame, in the parent JOINT frame
     # x y z angle angle angle (Euler roll pitch yaw; extrinsic x-y-z rotation)
     xml_joint_origin = SubElement(xml_joint, 'origin')
+
+    print("  joint matrix:", obj.matrix_world)
+    print("  joint parent:", obj.sk_joint_parent)
+    print("  joint parent matrix:", obj.sk_joint_parent.matrix_world)
 
     if obj.sk_joint_parent['sk_link_parent_joint'] == None:
         pose_wrt_parent = obj.matrix_world
