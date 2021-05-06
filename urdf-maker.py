@@ -418,7 +418,7 @@ def export_tree(context):
     export_start_time = time.time()
     
     xml_root = Element('robot')
-    xml_root.set('name', "robot_"+root.name)
+    xml_root.set('name', context.scene.robot_name)
     
     # explore the kinematic tree from root down
     link_frontier = [root]
@@ -457,7 +457,6 @@ class URDFExportOperator(bpy.types.Operator):
     
     def execute(self, context):
         print('Export action called, root object=', context.object)
-        context.scene.robot_name = context.object.name
         boilerplate(context.scene.robot_name)
         build_kinematic_tree(context)
         export_tree(context)
@@ -475,8 +474,6 @@ def get_dof_qty(obj):
         dof += 1
     return dof
 
-
-
 # this is the panel in the constraints window where you define joint information
 class SimpleKinematicsJointPanel(bpy.types.Panel):
     """Creates a Panel in the Constraints properties window"""
@@ -489,6 +486,9 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         obj = context.object
+        
+        row = layout.row()
+        row.prop(context.scene, "robot_name", text="Robot Name")
         
         row = layout.row()
         row.prop(obj, 'enum_sk_type', text='Type', expand=True)
