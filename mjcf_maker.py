@@ -47,22 +47,6 @@ def build_kinematic_tree(context):
             dict_tmp = context.scene.objects[obj.sk_joint_parent.name]['sk_link_child_joints']
             dict_tmp[repr(len(dict_tmp.keys())+1)] = obj
 
-def get_joint_subtype(obj):
-    if obj.enum_joint_type == 'revolute':
-        dof = get_dof_qty(obj)
-            
-        if dof == 3:
-            return "ball"
-        if dof == 2:
-            return "universal"
-        
-        if obj.sk_axis_x_limit or obj.sk_axis_y_limit or obj.sk_axis_z_limit:
-            return "revolute"
-        else:
-            return "revolute"
-    else:
-        return obj.enum_joint_type
-
 def inertia_of_box(obj):
     inertia = {}
     inertia['ixx'] = (1.0/12.0)*obj.sk_mass*(obj.dimensions[1]**2 + obj.dimensions[2]**2)
@@ -179,8 +163,7 @@ def export_joint(context, obj, xml_model):
     xml_joint = SubElement(xml_model, 'joint')
     xml_joint.set('name', obj.name)
     
-    joint_subtype = get_joint_subtype(obj)
-    xml_joint.set('type', joint_subtype)
+    xml_joint.set('type',  obj.enum_joint_type)
     
     xml_joint_parent = SubElement(xml_joint, 'parent')
     xml_joint_parent.text = obj.sk_joint_parent.name
@@ -341,18 +324,6 @@ class MJCFExportOperator(bpy.types.Operator):
         
         return {'FINISHED'}
 
-def get_dof_qty(obj):
-    dof = 0
-    if obj.sk_axis_x_enabled == 1:
-        dof += 1
-    if obj.sk_axis_y_enabled == 1:
-        dof += 1
-    if obj.sk_axis_z_enabled == 1:
-        dof += 1
-    return dof
-
-
-
 # this is the panel in the constraints window where you define joint information
 class SimpleKinematicsJointPanel(bpy.types.Panel):
     """Creates a Panel in the Constraints properties window"""
@@ -367,32 +338,40 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
         obj = context.object
         
         row = layout.row()
+        row.operator('sk.export_mjcf', text="Export using this object as root").action = 'MJCF'
+
+        row = layout.row()
         row.prop(obj, 'enum_sk_type', text='Type', expand=True)
+
+
         
-        if obj.enum_sk_type == 'link':
+        if obj.enum_sk_type == 'body':
             # TODO geometry primitives! 
             # use the empty cube type to help visualize what's going on? and look at its scale
+
+            # mode switch - primitives or mesh
+
+
             row = layout.row()
             row.prop(obj, 'sk_mass', text='Mass (kg)')
                     
             row = layout.row()
-            row.prop(obj, 'sk_link_collision', text='Collision Mesh (optional)')
+            row.prop(obj, 'sk_body_collision', text='Collision Mesh (optional)')
 
-            row = layout.row()
-            row.operator('sk.export_sdf', text="Export using this object as root").action = 'SDF'
+
+
 
         if obj.enum_sk_type == 'joint':
-            # TODO mark if joint is to be an actuator or not
             
             row = layout.row()
-            row.label(text="Connects Links")
+            row.label(text="Connects Bodies")
             
             row = layout.row()
             row.prop(obj, "sk_joint_parent")
             
             row = layout.row()
             row.prop(obj, "sk_joint_child")
-        
+
             row = layout.row()
             row.label(text="Joint Properties")
                    
@@ -405,80 +384,41 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
             # if one translation, then create one slide joint..
             # but what about adding custom per joint properties? 
             
-            if obj.enum_joint_type == 'hinge' or obj.enum_joint_type == 'slide':
-                
-                if obj.enum_joint_type == 'slide' and get_dof_qty(obj) > 1:
-                    row = layout.row()
-                    row.label(text="ERROR! Too many joint axis selected for this joint type")
-                    
-                if obj.enum_joint_type == 'hinge':
-                    row = layout.row()
-                    row.label(text="Joint subtype: " + get_joint_subtype(obj))
-                    
-                # a block for axis settings
-                axis_layout = layout.row()
-                
-                # X axis
-                axis_layout_x = axis_layout.column()
-                row = axis_layout_x.row()
-                axis_layout_x.prop(obj, 'sk_axis_x_enabled', text='X')
-                
-                row = axis_layout_x.row()
-                row.prop(obj, 'sk_axis_x_limit', text='limit')
-                row.enabled = obj.sk_axis_x_enabled
-                
-                col = axis_layout_x.column()
-                if obj.enum_joint_type == 'slide':
-                    col.prop(obj, 'sk_axis_x_lower_lin', text='lower limit')
-                    col.prop(obj, 'sk_axis_x_upper_lin', text='upper limit')
-                else:   
-                    col.prop(obj, 'sk_axis_x_lower_rot', text='lower limit')
-                    col.prop(obj, 'sk_axis_x_upper_rot', text='upper limit')
-                col.enabled = obj.sk_axis_x_limit
-                # TODO Prevent setting limits for ball joints
-                
-                # y axis
-                axis_layout_y = axis_layout.column()
-                row = axis_layout_y.row()
-                row.prop(obj, 'sk_axis_y_enabled', text='Y')
-                
-                row = axis_layout_y.row()
-                row.prop(obj, 'sk_axis_y_limit', text='limit')
-                row.enabled = obj.sk_axis_y_enabled
-                
-                col = axis_layout_y.column()
-                if obj.enum_joint_type == 'slide':
-                    col.prop(obj, 'sk_axis_y_lower_lin', text='lower limit')
-                    col.prop(obj, 'sk_axis_y_upper_lin', text='upper limit')
-                else: 
-                    col.prop(obj, 'sk_axis_y_lower_rot', text='lower limit')
-                    col.prop(obj, 'sk_axis_y_upper_rot', text='upper limit')
-                col.enabled = obj.sk_axis_y_limit
-                
-                # z axis
-                axis_layout_z = axis_layout.column()
-                row = axis_layout_z.row()
-                row.prop(obj, 'sk_axis_z_enabled', text='Z')
-                
-                row = axis_layout_z.row()
-                row.prop(obj, 'sk_axis_z_limit', text='limit')
-                row.enabled = obj.sk_axis_z_enabled
-                
-                col = axis_layout_z.column()
-                if obj.enum_joint_type == 'slide':
-                    col.prop(obj, 'sk_axis_y_lower_lin', text='lower limit')
-                    col.prop(obj, 'sk_axis_y_upper_lin', text='upper limit')
-                else: 
-                    col.prop(obj, 'sk_axis_z_lower_rot', text='lower limit')
-                    col.prop(obj, 'sk_axis_z_upper_rot', text='upper limit')
-                col.enabled = obj.sk_axis_z_limit
+            if obj.enum_joint_type == 'hinge' or obj.enum_joint_type == 'slide' or obj.enum_joint_type == 'ball':
+                                    
+                # a block for basic axis settings
+                row = layout.row()
+                row.prop(obj, 'enum_joint_axis', text='Axis')
+
+                row = layout.row()
+                row.prop(obj, 'sk_axis_limit', text='limit')
+
+                if obj.sk_axis_limit:
+                    if obj.enum_joint_type == 'slide':
+                        row.prop(obj, 'sk_axis_lower_lin', text='lower limit')
+                        row.prop(obj, 'sk_axis_upper_lin', text='upper limit')
+                    elif obj.enum_joint_type == 'hinge':
+                        row.prop(obj, 'sk_axis_lower_rot', text='lower limit')
+                        row.prop(obj, 'sk_axis_upper_rot', text='upper limit')
+                    else:
+                        row.prop(obj, 'sk_axis_upper_rot', text='upper limit')
+
+            row = layout.row()
+            row.prop(obj, "sk_is_actuator")
+
+            if obj.sk_is_actuator:
+                row = layout.row()
+                row.label(text="TODO add some actuator properties!")
+                row = layout.row()
+                row.label(text="type, effort limits, reflected inertia...")
+
                 
 
 enum_joint_type_options = [
     ('free', 'Free', '', 1), # rules!
     ('ball', 'Ball', '', 2), # rules! body cannot have other rotary joints but can have slide
-    ('slide', 'Slide', '', 3),
-    ('hinge', 'Hinge', '', 4)
+    ('hinge', 'Hinge', '', 3),
+    ('slide', 'Slide', '', 4)
     ]
     
 enum_joint_axis_options = [
@@ -488,7 +428,7 @@ enum_joint_axis_options = [
     ]
     
 enum_sk_type = [
-    ('link', 'link', 'link'),
+    ('body', 'body', 'body'),
     ('joint', 'joint', 'joint')
     ]
     
@@ -505,27 +445,14 @@ def register():
     bpy.types.Object.sk_joint_child = bpy.props.PointerProperty(type=bpy.types.Object, name="sk_joint_child", description="Simple Kinematics Joint Child Object", update=None)
     bpy.types.Object.sk_link_collision = bpy.props.PointerProperty(type=bpy.types.Object, name="sk_link_collision", description="Simple Kinematics Link Collision Object", update=None)
     bpy.types.Object.sk_mass = bpy.props.FloatProperty(name='sk_mass', default=1)
-    bpy.types.Object.sk_axis_x_enabled = bpy.props.BoolProperty(name="X", default=False)
-    bpy.types.Object.sk_axis_x_limit = bpy.props.BoolProperty(name="x_limit", default=False)
-    bpy.types.Object.sk_axis_x_lower_rot = bpy.props.FloatProperty(name="x_lower_rot", default=0, soft_min=-2*pi, soft_max=2*pi, unit="ROTATION", step=step_angle_ui)
-    bpy.types.Object.sk_axis_x_upper_rot = bpy.props.FloatProperty(name="x_upper_rot", default=0, soft_min=-2*pi, soft_max=2*pi, unit="ROTATION", step=step_angle_ui)
-    bpy.types.Object.sk_axis_x_lower_lin = bpy.props.FloatProperty(name="x_lower_lin", default=0, soft_min=-1, soft_max=1, unit="LENGTH", step=step_lin_ui)
-    bpy.types.Object.sk_axis_x_upper_lin = bpy.props.FloatProperty(name="x_upper_lin", default=0, soft_min=-1, soft_max=1, unit="LENGTH", step=step_lin_ui)
-    
-    bpy.types.Object.sk_axis_y_enabled = bpy.props.BoolProperty(name="Y", default=False)
-    bpy.types.Object.sk_axis_y_limit = bpy.props.BoolProperty(name="y_limit", default=False)
-    bpy.types.Object.sk_axis_y_lower_rot = bpy.props.FloatProperty(name="y_lower_rot", default=0, soft_min=-2*pi, soft_max=2*pi, unit="ROTATION", step=step_angle_ui)
-    bpy.types.Object.sk_axis_y_upper_rot = bpy.props.FloatProperty(name="y_upper_rot", default=0, soft_min=-2*pi, soft_max=2*pi, unit="ROTATION", step=step_angle_ui)
-    bpy.types.Object.sk_axis_y_lower_lin = bpy.props.FloatProperty(name="y_lower_lin", default=0, soft_min=-1, soft_max=1, unit="LENGTH", step=step_lin_ui)
-    bpy.types.Object.sk_axis_y_upper_lin = bpy.props.FloatProperty(name="y_upper_lin", default=0, soft_min=-1, soft_max=1, unit="LENGTH", step=step_lin_ui)
-    
-    bpy.types.Object.sk_axis_z_enabled = bpy.props.BoolProperty(name="Z", default=True)
-    bpy.types.Object.sk_axis_z_limit = bpy.props.BoolProperty(name="z_limit", default=False)
-    bpy.types.Object.sk_axis_z_lower_rot = bpy.props.FloatProperty(name="z_lower_rot", default=0, soft_min=-2*pi, soft_max=2*pi, unit="ROTATION", step=step_angle_ui)
-    bpy.types.Object.sk_axis_z_upper_rot = bpy.props.FloatProperty(name="z_upper_rot", default=0, soft_min=-2*pi, soft_max=2*pi, unit="ROTATION", step=step_angle_ui)
-    bpy.types.Object.sk_axis_z_lower_lin = bpy.props.FloatProperty(name="z_lower_lin", default=0, soft_min=-1, soft_max=1, unit="LENGTH", step=step_lin_ui)
-    bpy.types.Object.sk_axis_z_upper_lin = bpy.props.FloatProperty(name="z_upper_lin", default=0, soft_min=-1, soft_max=1, unit="LENGTH", step=step_lin_ui)
-    
+    bpy.types.Object.sk_is_actuator = bpy.props.BoolProperty(name="is_actuator", default=False)
+
+    bpy.types.Object.sk_axis_limit = bpy.props.BoolProperty(name="sk_axis_limit", default=False)
+    bpy.types.Object.sk_axis_lower_rot = bpy.props.FloatProperty(name="lower_rot", default=0, soft_min=-2*pi, soft_max=2*pi, unit="ROTATION", step=step_angle_ui)
+    bpy.types.Object.sk_axis_upper_rot = bpy.props.FloatProperty(name="upper_rot", default=0, soft_min=-2*pi, soft_max=2*pi, unit="ROTATION", step=step_angle_ui)
+    bpy.types.Object.sk_axis_lower_lin = bpy.props.FloatProperty(name="lower_lin", default=0, soft_min=-1, soft_max=1, unit="LENGTH", step=step_lin_ui)
+    bpy.types.Object.sk_axis_upper_lin = bpy.props.FloatProperty(name="upper_lin", default=0, soft_min=-1, soft_max=1, unit="LENGTH", step=step_lin_ui)
+        
     bpy.utils.register_class(MJCFExportOperator)
     bpy.utils.register_class(SimpleKinematicsJointPanel)
 
@@ -536,9 +463,10 @@ def unregister():
     del bpy.types.Object.enum_joint_axis
     del bpy.types.Object.sk_joint_parent
     del bpy.types.Object.sk_joint_child
-    del bpy.types.Object.sk_link_collision
+    del bpy.types.Object.sk_link_collision #TODO
     del bpy.types.Object.enum_sk_type
     del bpy.types.Object.sk_mass
+    del bpy.types.Object.sk_is_actuator
 
 if __name__ == "__main__":
     register()
