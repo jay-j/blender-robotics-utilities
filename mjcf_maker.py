@@ -28,14 +28,20 @@ from xml.etree.ElementTree import Element, SubElement, Comment, tostring
 from xml.dom import minidom
 # https://pymotw.com/2/xml/etree/ElementTree/create.html
 
-
-
 def xml_pretty(elem):
     """Return a pretty-printed XML string for the Element.
     """
     rough_string = ElementTree.tostring(elem, 'utf-8')
     reparsed = minidom.parseString(rough_string)
     return reparsed.toprettyxml(indent="    ")
+
+def export_pretty(context, xml_root):
+    # make it user-readable and atually do the file export
+    xml_pretty_string = xml_pretty(xml_root)
+    print(xml_pretty_string)
+    fd = open(bpy.path.abspath('//' + context.scene.robot_name + '.xml'), 'w')
+    fd.write(xml_pretty_string)
+    fd.close()
 
 # explores all objects in context.scene.objects to 
 # tells bodies which joints are DOWNSTREAM of them
@@ -66,43 +72,8 @@ def build_kinematic_tree(context):
             dict_tmp = context.scene.objects[parent.name]['sk_child_entity_list']
             dict_tmp[repr(len(dict_tmp.keys())+1)] = obj
 
-
-def inertia_of_box(obj):
-    inertia = {}
-    inertia['ixx'] = (1.0/12.0)*obj.sk_mass*(obj.dimensions[1]**2 + obj.dimensions[2]**2)
-    inertia['iyy'] = (1.0/12.0)*obj.sk_mass*(obj.dimensions[0]**2 + obj.dimensions[2]**2)
-    inertia['izz'] = (1.0/12.0)*obj.sk_mass*(obj.dimensions[0]**2 + obj.dimensions[1]**2)
-    inertia['ixy'] = 0
-    inertia['ixz'] = 0
-    inertia['iyz'] = 0
-    return inertia
-
-def export_link_inertial(context, obj, xml_link):
-    xml_mass = SubElement(xml_link, 'mass')
-    xml_mass.text = repr(obj.sk_mass)
-    
-    xml_inertia = SubElement(xml_link, 'inertia')
-    inertia = inertia_of_box(obj)
-    for i in inertia:
-        xml_i = SubElement(xml_inertia, i)
-        xml_i.text = repr(inertia[i])
-
-def xml_pose(context, obj, xml_entity):
-    xform = obj.matrix_world.inverted()
-    pose = ''
-    pose += repr(xform.translation[0]) + " "
-    pose += repr(xform.translation[1]) + " "
-    pose += repr(xform.translation[2]) + " "
-    rot = xform.to_euler('XYZ')
-    pose += repr(rot.x) + " "
-    pose += repr(rot.y) + " "
-    pose += repr(rot.z)
-    
-    xml_pose = SubElement(xml_entity, 'pose')
-    xml_pose.text = pose
-
-
-def export_stl(context, obj, xml_geometry):
+def export_stl(context, obj):
+    print(f"Exporting STL for object {obj.name}")
     # store the active object so it can be restored later
     sel_obj = bpy.context.view_layer.objects.active
     
@@ -115,16 +86,12 @@ def export_stl(context, obj, xml_geometry):
     bpy.ops.object.select_all(action='DESELECT')
     obj.select_set(True)
     
-    # TODO use_global_frame=False
-    bpy.ops.export_mesh.stl(filepath=bpy.path.abspath('//mesh_stl/' + obj.name + '.stl'), use_selection=True)
+    # CAUTION! the option use_global_frame requres modifying Blender D11517 (https://developer.blender.org/D11517)
+    bpy.ops.export_mesh.stl(filepath=bpy.path.abspath('//mesh_stl/' + obj.name + '.stl'), use_selection=True, use_global_frame=False, ascii=False)
     
     # restore selection
     bpy.ops.object.select_all(action='DESELECT')
     sel_obj.select_set(True)
-    
-    xml_mesh = SubElement(xml_geometry, "mesh")
-    xml_uri = SubElement(xml_mesh, "uri")
-    xml_uri.text = 'file://'+ bpy.path.abspath('//mesh_stl/' + obj.name + '.stl')
     
 def export_link_stl_collision(context, obj, xml_link):
     xml_collision = SubElement(xml_link, "collision")
@@ -148,133 +115,47 @@ def export_link_stl_visual(context, obj, xml_link):
 
     export_stl(context, obj, xml_geometry)
 
-
-
-# exports xml data for a joint entity  
-def export_joint(context, obj, xml_model):
-    print("exporting joint", obj.name)
-    xml_joint = SubElement(xml_model, 'joint')
-    xml_joint.set('name', obj.name)
-    
-    xml_joint.set('type',  obj.enum_joint_type)
-    
-    xml_joint_parent = SubElement(xml_joint, 'parent')
-    xml_joint_parent.text = obj.sk_joint_parent.name
-    xml_joint_child = SubElement(xml_joint, 'child')
-    xml_joint_child.text = obj.sk_joint_child.name
-    
-    # pose: where the joint is relative to the child frame, in the child frame
-    # x y z angle angle angle (Euler roll pitch yaw; extrinsic x-y-z rotation)
-    xml_joint_pose = SubElement(xml_joint, 'pose')
-    pose_wrt_child = obj.sk_joint_child.matrix_world.inverted() @ obj.matrix_world # the '@' notation means matrix (not element) multiplication
-
-    pose = ""
-    pose += repr(pose_wrt_child.translation[0]) + " "
-    pose += repr(pose_wrt_child.translation[1]) + " "
-    pose += repr(pose_wrt_child.translation[2]) + " "
-    
-    rot = pose_wrt_child.to_euler('XYZ')
-    pose += repr(rot.x) + " "
-    pose += repr(rot.y) + " "
-    pose += repr(rot.z)
-    
-    xml_joint_pose.text = pose
-        
-    # axis 1
-    if ['revolute', 'continuous', 'prismatic', 'universal'].count(joint_subtype) > 0:
-        # build nicer arrays of axis properties, with 0,1,2 as xyz
-        axis_enabled = [obj.sk_axis_x_enabled, obj.sk_axis_y_enabled, obj.sk_axis_z_enabled]
-        axis_limit = [obj.sk_axis_x_limit, obj.sk_axis_y_limit, obj.sk_axis_z_limit]
-        if ['prismatic'].count(joint_subtype) > 0:
-            axis_lower = [obj.sk_axis_x_lower_lin, obj.sk_axis_y_lower_lin, obj.sk_axis_z_lower_lin]
-            axis_upper = [obj.sk_axis_x_upper_lin, obj.sk_axis_y_upper_lin, obj.sk_axis_z_upper_lin]
-        else:
-            axis_lower = [obj.sk_axis_x_lower_rot, obj.sk_axis_y_lower_rot, obj.sk_axis_z_lower_rot]
-            axis_upper = [obj.sk_axis_x_upper_rot, obj.sk_axis_y_upper_rot, obj.sk_axis_z_upper_rot]
-        
-        # figure out which axis is to be axis1
-        axis1 = -1
-        for i in range(0,3):
-            if axis_enabled[i]:
-                axis1 = i
-                break
-        print("found axis: ", axis1)
-        
-        # axis unit vector expressed in the joint frame
-        axis_dict = {0:'1 0 0', 1:'0 1 0', 2:'0 0 1'}
-        xml_axis = SubElement(xml_joint, 'axis')
-        xml_xyz = SubElement(xml_axis, 'xyz')
-        xml_xyz.text = axis_dict[axis1]
-        
-        # set axis limits for those that allow it
-        if ['revolute', 'prismatic'].count(joint_subtype) > 0:
-            if axis_limit[axis1]:
-                xml_limit = SubElement(xml_axis, 'limit')
-                xml_lower = SubElement(xml_limit, 'lower')
-                xml_lower.text = repr(axis_lower[axis1])
-                xml_upper = SubElement(xml_limit, 'upper')
-                xml_upper.text = repr(axis_upper[axis1])
-            
-        # deal with this special case that needs a second axis
-        if joint_subtype == 'universal':
-            # figure out which axis is axis 2
-            axis2 = -1
-            for i in range(2,-1,-1):
-                if axis_enabled[i]:
-                    axis2 = i
-                    break
-            print("found axis2: ", axis2)
-            
-            # export data for that axis
-            xml_axis2 = SubElement(xml_joint, 'axis2')
-            xml_xyz2 = SubElement(xml_axis2, 'xyz')
-            xml_xyz2.text = axis_dict[axis2]
-            if axis_limit[axis2]:
-                xml_limit2 = SubElement(xml_axis2, 'limit')
-                xml_lower2 = SubElement(xml_limit2, 'lower')
-                xml_lower2.text = repr(axis_lower[axis2])
-                xml_upper2 = SubElement(xml_limit2, 'upper')
-                xml_upper2.text = repr(axis_upper[axis2])
-
 def export_options(xml_root): # TODO expose these in some sort of UI panel
+    xml_compiler = SubElement(xml_root, "compiler")
+    xml_compiler.set("angle", "radian")
+
     xml_options = SubElement(xml_root, "option")
     xml_options.set("timestep", "0.001")
     xml_options.set("iterations", "20")
 
-    xml_sensorless = SubElement(xml_options, "flag")
-    xml_sensorless.set("sensorless", "enable")
+    xml_sensornoise = SubElement(xml_options, "flag")
+    xml_sensornoise.set("sensornoise", "enable")
 
 def export_setup_folders():
     if not os.path.exists(bpy.path.abspath('//mesh_stl')):
         print('Did not find mesh folder, creating it')
         os.makedirs(bpy.path.abspath('//mesh_stl'))
 
-def export_pretty(context, xml_root):
-    # make it user-readable and atually do the file export
-    xml_pretty_string = xml_pretty(xml_root)
-    print(xml_pretty_string)
-    fd = open(bpy.path.abspath('//' + context.scene.robot_name + '.xml'), 'w')
-    fd.write(xml_pretty_string)
-    fd.close()
-
 def export_defaults(): # TODO
     pass
 
+def export_mesh_geom(context, obj, xml, xml_asset):
+    xml_geom = SubElement(xml, "geom")
+    xml_geom.set("name", obj.name)
+    xml_geom.set("type", "mesh")
+    xml_geom.set("pos", "0 0 0")
+    xml_geom.set("quat", "1 0 0 0")
+    xml_geom.set("mass", repr(obj.sk_mass))
+    xml_geom.set("mesh", "mesh_" + obj.name)
+
+    xml_stl = SubElement(xml_asset, "mesh")
+    xml_stl.set("name", "mesh_" + obj.name)
+    xml_stl.set("file", "mesh_stl/" + obj.name + ".stl")
+    export_stl(context, obj)
 
 # exports xml data for a link entity
-# TODO handle multiple geometries for the same object  
-def export_entity(context, obj, xml_model, body_is_root):
+def export_entity(context, obj, xml_model, body_is_root, xml_asset):
 
     if not body_is_root:
-        print("parent tf\n:", obj.sk_parent_entity.matrix_world)
-        print("self tf\n:", obj.matrix_world)
         tf = obj.sk_parent_entity.matrix_world.inverted_safe() @ obj.matrix_world
-        print("multiplied:\n", tf)
-        # TODO position repr(obj.matrix_world.translation[0]) + " "
-        # relative to the parent?
         pos = repr(tf.translation[0]) + " " + repr(tf.translation[1]) + " " + repr(tf.translation[2])
 
-        # TODO orientation quaternion
+        # TODO verify orientation quaternion
         # relative to the parent?
         q = tf.to_quaternion()
         quat = repr(q[0]) + " " + repr(q[1]) + " " + repr(q[2]) + " " + repr(q[3])
@@ -288,6 +169,7 @@ def export_entity(context, obj, xml_model, body_is_root):
 
         xml_entity.set("pos", pos)
         xml_entity.set("quat", quat)
+        xml_entity.set("mass", repr(obj.sk_mass))
 
     elif obj.enum_sk_type == "joint":
         print(f"Exporting {obj.name} as JOINT")
@@ -303,11 +185,22 @@ def export_entity(context, obj, xml_model, body_is_root):
         axis_parent = obj.sk_parent_entity.matrix_world.inverted_safe().to_3x3() @ axis_global
 
         xml_entity.set("axis", repr(axis_parent[0]) + " " + repr(axis_parent[1]) + " " + repr(axis_parent[2]))
-        # xml_entity.set("quat", quat) # TODO this really is an axis thing...
+
+        # TODO stiffness damping, other properties
+
+        if obj.enum_joint_type != "free":
+            xml_entity.set("limited", repr(obj.sk_axis_limit).lower())
+            if obj.sk_axis_limit:
+                if obj.enum_joint_type == "slide":
+                    xml_entity.set("range", repr(obj.sk_axis_lower_lin) + " " + repr(obj.sk_axis_upper_lin))
+                elif obj.enum_joint_type == "ball":
+                    xml_entity.set("range", "0 " + repr(obj.sk_axis_upper_rot))
+                else:
+                    xml_entity.set("range", repr(obj.sk_axis_lower_rot) + " " + repr(obj.sk_axis_upper_rot))
 
         for j, child in obj['sk_child_entity_list'].iteritems():
             print("calling child: ", child)
-            export_entity(context, child, xml_model, False)
+            export_entity(context, child, xml_model, False, xml_asset)
 
     elif obj.enum_sk_type == "body":
         print(f"Exporting {obj.name} as BODY")
@@ -315,6 +208,7 @@ def export_entity(context, obj, xml_model, body_is_root):
         if body_is_root:
             # just worldbody with no info
             # this is fed in from up above
+            # TODO how to bring in better the world geometry body?
             xml_entity = xml_model
         else:
             xml_entity = SubElement(xml_model, 'body')
@@ -323,19 +217,18 @@ def export_entity(context, obj, xml_model, body_is_root):
             xml_entity.set("pos", pos)
             xml_entity.set("quat", quat)
             
-            # TODO create mesh geoms if this object doesn't have its own geom child(s)
+            if not obj.sk_use_primitive_geom:
+                export_mesh_geom(context, obj, xml_entity, xml_asset)
 
         for j, child in obj['sk_child_entity_list'].iteritems():
             print("calling child: ", child)
-            export_entity(context, child, xml_entity, False)
+            export_entity(context, child, xml_entity, False, xml_asset)
 
     else:
         print(f"[ERROR] something has gone wrong exporting {obj.name}!")
 
-    # recursively call function on child entities!
+
     # how to handle joints that are in parallel?
-
-
 
 # follows an already-explored tree to add links and joints to the xml data    
 def export_tree(context):
@@ -350,15 +243,15 @@ def export_tree(context):
     export_options(xml_root)
     export_defaults()
 
+    xml_asset = SubElement(xml_root, "asset")
+
     xml_worldbody = SubElement(xml_root, "worldbody")
     
     # TODO search the scene for root object(s) - and static ground geometries
     # maybe have a world/ground empty? that can consistently start everything, have things referenced to it!
 
     # explore the kinematic tree from root down
-    # TODO child bodies are XML within the parent body
-    # TODO break up.. independence of geometry entries and bodies
-    export_entity(context, root, xml_worldbody, True)
+    export_entity(context, root, xml_worldbody, True, xml_asset)
 
     # TODO lights and cameras inside worldbody
     xml_light_tmp = SubElement(xml_worldbody, "light")
@@ -399,27 +292,27 @@ def calculate_geom_size(obj):
     size = None
     if obj.sk_geom_type == "plane":
         # x half; y half; square grid spacing
-        size = [obj.scale[0], obj.scale[1], obj.scale[2]]
+        size = [abs(obj.scale[0]), abs(obj.scale[1]), abs(obj.scale[2])]
 
     if obj.sk_geom_type == "sphere":
         # radius
-        size = [obj.scale[0]]
+        size = [abs(obj.scale[0])]
 
     if obj.sk_geom_type == "capsule":
         # radius, center length
-        size = [obj.scale[1], 2*obj.scale[0]]
+        size = [abs(obj.scale[0]), abs(obj.scale[2])]
 
     if obj.sk_geom_type == "ellipsoid":
         # radius ; radius ; radius
-        size = obj.scale
+        size = [abs(obj.scale[0]), abs(obj.scale[1]), abs(obj.scale[2])]
 
     if obj.sk_geom_type == "cylinder":
         # radius; length
-        size = [obj.scale[1], 2*obj.scale[0]]
+        size = [abs(obj.scale[1]), abs(2*obj.scale[0])]
 
     if obj.sk_geom_type == "box":
         # x y z
-        size = [2*obj.scale[0], 2*obj.scale[1],2*obj.scale[2]]    
+        size = [abs(obj.scale[0]), abs(obj.scale[1]), abs(obj.scale[2])]    
 
     return size
 
@@ -452,8 +345,6 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
         row.prop(obj, 'enum_sk_type', text='Type', expand=True)
         
         if obj.enum_sk_type == 'body':
-            # TODO geometry primitives! 
-            # use the empty cube type to help visualize what's going on? and look at its scale
 
             # TODO if body is to built of geoms, then those should drive the mass
 
@@ -508,6 +399,8 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
                    
             row = layout.row()
             row.prop(obj, 'enum_joint_type', text='joint type', expand=True)
+
+            # TODO stiffness, damping, etc.
             
             if obj.enum_joint_type == 'hinge' or obj.enum_joint_type == 'slide' or obj.enum_joint_type == 'ball':
                                     
@@ -584,9 +477,7 @@ def register():
 
     # Joint Properties
     bpy.types.Object.enum_joint_type = bpy.props.EnumProperty(items=enum_joint_type_options)
-    # bpy.types.Object.enum_joint_axis = bpy.props.EnumProperty(items=enum_joint_axis_options, options = {"ENUM_FLAG"}, default={'x'}) #TODO allow only one axis!
-    bpy.types.Object.enum_joint_axis = bpy.props.EnumProperty(items=enum_joint_axis_options, default="x") #TODO allow only one axis!
-    #bpy.types.Object.sk_child_entity = bpy.props.PointerProperty(type=bpy.types.Object, name="sk_child_entity", description="Simple Kinematics Child Entity", update=None)
+    bpy.types.Object.enum_joint_axis = bpy.props.EnumProperty(items=enum_joint_axis_options, default="x")
 
     bpy.types.Object.sk_axis_limit = bpy.props.BoolProperty(name="sk_axis_limit", default=False)
     bpy.types.Object.sk_axis_lower_rot = bpy.props.FloatProperty(name="lower_rot", default=0, soft_min=-2*pi, soft_max=2*pi, unit="ROTATION", step=step_angle_ui)
