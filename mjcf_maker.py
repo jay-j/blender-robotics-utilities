@@ -29,28 +29,43 @@ from xml.dom import minidom
 # https://pymotw.com/2/xml/etree/ElementTree/create.html
 
 
+
 def xml_pretty(elem):
     """Return a pretty-printed XML string for the Element.
     """
     rough_string = ElementTree.tostring(elem, 'utf-8')
     reparsed = minidom.parseString(rough_string)
-    return reparsed.toprettyxml(indent="   ")
+    return reparsed.toprettyxml(indent="    ")
 
 # explores all objects in context.scene.objects to 
 # tells bodies which joints are DOWNSTREAM of them
 # tells bodies which geoms are DOWNSTREAM of them
-# bodies can have multiple child geoms
-# bodies can have ONE child joint
-# joints can have ONE child entity
+# tells bodies which bodies are DOWNSTREAM of them
+# tells joints which joints are DOWNSTREAM of them
+# bodies must be the children of bodies, not the children of joints here
+
 def build_kinematic_tree(context):
     for obj in context.scene.objects:
         obj['sk_child_entity_list'] = {}
     
     for obj in context.scene.objects:
         if not( obj.sk_parent_entity == None):
-            dict_tmp = context.scene.objects[obj.sk_parent_entity.name]['sk_child_entity_list']
+
+            parent = obj.sk_parent_entity
+            if obj.enum_sk_type == "body":
+                # search for the upper body
+                attempts = 0
+                attempt_limit = 512
+
+                while parent.enum_sk_type != "body":
+                    parent = parent.sk_parent_entity
+                    attempts += 1
+                    assert(attempts < attempt_limit)
+
+            # now register with the parent
+            dict_tmp = context.scene.objects[parent.name]['sk_child_entity_list']
             dict_tmp[repr(len(dict_tmp.keys())+1)] = obj
-            # print("Dictionary!", dict_tmp)
+
 
 def inertia_of_box(obj):
     inertia = {}
@@ -251,15 +266,50 @@ def export_defaults(): # TODO
 def export_entity(context, obj, xml_model, body_is_root):
 
     if not body_is_root:
+        print("parent tf\n:", obj.sk_parent_entity.matrix_world)
+        print("self tf\n:", obj.matrix_world)
+        tf = obj.sk_parent_entity.matrix_world.inverted_safe() @ obj.matrix_world
+        print("multiplied:\n", tf)
         # TODO position repr(obj.matrix_world.translation[0]) + " "
         # relative to the parent?
-        pos = "0 0 0"
+        pos = repr(tf.translation[0]) + " " + repr(tf.translation[1]) + " " + repr(tf.translation[2])
 
         # TODO orientation quaternion
         # relative to the parent?
-        quat = "0 0 0 0"
+        q = tf.to_quaternion()
+        quat = repr(q[0]) + " " + repr(q[1]) + " " + repr(q[2]) + " " + repr(q[3])
 
-    if obj.enum_sk_type == "body":
+    if obj.enum_sk_type == "geom":
+        print(f"Exporting {obj.name} as GEOM")
+        xml_entity = SubElement(xml_model, "geom")
+        xml_entity.set("name", obj.name)
+        xml_entity.set("type", obj.sk_geom_type)
+        xml_entity.set("size", calculate_geom_size_str(obj) )
+
+        xml_entity.set("pos", pos)
+        xml_entity.set("quat", quat)
+
+    elif obj.enum_sk_type == "joint":
+        print(f"Exporting {obj.name} as JOINT")
+        # TODO how to handle multiple joints attached to the same body?
+        # export_joint(context, joint, xml_entity, False)
+        xml_entity = SubElement(xml_model, "joint")
+        xml_entity.set("type", obj.enum_joint_type)
+        xml_entity.set("pos", pos)
+
+        axis_dict = {"x":Vector([1,0,0]), "y":Vector([0,1,0]), "z":Vector([0,0,1]), "":Vector([0,0,0])}
+        axis_local = axis_dict[obj.enum_joint_axis]
+        axis_global = obj.matrix_world.to_3x3() @ axis_local
+        axis_parent = obj.sk_parent_entity.matrix_world.inverted_safe().to_3x3() @ axis_global
+
+        xml_entity.set("axis", repr(axis_parent[0]) + " " + repr(axis_parent[1]) + " " + repr(axis_parent[2]))
+        # xml_entity.set("quat", quat) # TODO this really is an axis thing...
+
+        for j, child in obj['sk_child_entity_list'].iteritems():
+            print("calling child: ", child)
+            export_entity(context, child, xml_model, False)
+
+    elif obj.enum_sk_type == "body":
         print(f"Exporting {obj.name} as BODY")
 
         if body_is_root:
@@ -278,28 +328,6 @@ def export_entity(context, obj, xml_model, body_is_root):
         for j, child in obj['sk_child_entity_list'].iteritems():
             print("calling child: ", child)
             export_entity(context, child, xml_entity, False)
-
-    elif obj.enum_sk_type == "geom":
-        print(f"Exporting {obj.name} as GEOM")
-        xml_entity = SubElement(xml_model, "geom")
-        xml_entity.set("name", obj.name)
-        xml_entity.set("type", obj.sk_geom_type)
-        xml_entity.set("size", calculate_geom_size_str(obj) )
-
-        xml_entity.set("pos", pos)
-        xml_entity.set("quat", quat)
-
-    elif obj.enum_sk_type == "joint":
-        print(f"Exporting {obj.name} as JOINT")
-        # TODO how to handle multiple joints attached to the same body?
-        # export_joint(context, joint, xml_entity, False)
-        xml_entity = SubElement(xml_model, "joint")
-        xml_entity.set("axis", obj.enum_joint_axis)
-        xml_entity.set("type", obj.enum_joint_type)
-
-        for j, child in obj['sk_child_entity_list'].iteritems():
-            print("calling child: ", child)
-            export_entity(context, child, xml_model, False)
 
     else:
         print(f"[ERROR] something has gone wrong exporting {obj.name}!")
@@ -430,7 +458,7 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
             # TODO if body is to built of geoms, then those should drive the mass
 
             row = layout.row()
-            row.prop(obj, "sk_parent_entity", text="Parent Entity")
+            row.prop(obj, "sk_parent_entity", text="Parent Body")
 
             row = layout.row()
             row.prop(obj, "sk_use_primitive_geom", text="Use geometry primitives")
@@ -473,7 +501,7 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
         if obj.enum_sk_type == 'joint':
                         
             row = layout.row()
-            row.prop(obj, "sk_parent_entity", text="Parent Entity")
+            row.prop(obj, "sk_parent_entity", text="Child BODY or Parent JOINT")
 
             row = layout.row()
             row.label(text="Joint Properties")
@@ -556,7 +584,8 @@ def register():
 
     # Joint Properties
     bpy.types.Object.enum_joint_type = bpy.props.EnumProperty(items=enum_joint_type_options)
-    bpy.types.Object.enum_joint_axis = bpy.props.EnumProperty(items=enum_joint_axis_options, options = {"ENUM_FLAG"}, default={'x'})
+    # bpy.types.Object.enum_joint_axis = bpy.props.EnumProperty(items=enum_joint_axis_options, options = {"ENUM_FLAG"}, default={'x'}) #TODO allow only one axis!
+    bpy.types.Object.enum_joint_axis = bpy.props.EnumProperty(items=enum_joint_axis_options, default="x") #TODO allow only one axis!
     #bpy.types.Object.sk_child_entity = bpy.props.PointerProperty(type=bpy.types.Object, name="sk_child_entity", description="Simple Kinematics Child Entity", update=None)
 
     bpy.types.Object.sk_axis_limit = bpy.props.BoolProperty(name="sk_axis_limit", default=False)
