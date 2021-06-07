@@ -51,14 +51,16 @@ def export_pretty(context, xml_root):
 # bodies must be the children of bodies, not the children of joints here
 
 actuator_list = []
+equality_list = []
 
 def build_kinematic_tree(context):
     actuator_list.clear()
+    equality_list.clear()
     for obj in context.scene.objects:
         obj['sk_child_entity_list'] = {}
     
     for obj in context.scene.objects:
-        if not( obj.sk_parent_entity == None):
+        if (obj.enum_sk_type == "body" or obj.enum_sk_type == "joint" or obj.enum_sk_type == "geom") and not( obj.sk_parent_entity == None):
 
             parent = obj.sk_parent_entity
             if obj.enum_sk_type == "body":
@@ -69,7 +71,7 @@ def build_kinematic_tree(context):
                 while parent.enum_sk_type != "body":
                     parent = parent.sk_parent_entity
                     attempts += 1
-                    assert(attempts < attempt_limit)
+                    assert attempts < attempt_limit, "Some tangle in the kinematic tree."
 
             # now register with the parent
             dict_tmp = context.scene.objects[parent.name]['sk_child_entity_list']
@@ -80,7 +82,10 @@ def build_kinematic_tree(context):
             print(f"append actuator {obj.name}")
             actuator_list.append(obj)
 
-    print("completed list of actuator joint objects:", actuator_list)
+        if obj.enum_sk_type == "equality":
+            print(f"append equality {obj.name}")
+            equality_list.append(obj)
+
 
 def export_stl(context, obj):
     print(f"Exporting STL for object {obj.name}")
@@ -137,6 +142,22 @@ def export_actuators(context, xml):
         xml_act.set("forcelimited", repr(act.sk_actuator_forcelimited).lower())
         if act.sk_actuator_forcelimited:
             xml_act.set("forcerange", repr(act.sk_actuator_forcelimit_lower) + " " + repr(act.sk_actuator_forcelimit_upper))
+
+def export_equalities(context, xml):
+    xml_equality_list = SubElement(xml, "equality")
+    for eq in equality_list:
+        xml_eq = SubElement(xml_equality_list, eq.sk_equality_type)
+
+        if eq.sk_equality_type == "connect": 
+            xml_eq.set("body1", eq.sk_equality_entity1.name)
+            if not eq.sk_equality_entity2 == None:
+                xml_eq.set("body2", eq.sk_equality_entity2.name)
+            # export position relative to entity 1 in anchor tag
+
+            tf = eq.sk_equality_entity1.matrix_world.inverted_safe() @ eq.matrix_world
+            pos = repr(tf.translation[0]) + " " + repr(tf.translation[1]) + " " + repr(tf.translation[2])
+
+            xml_eq.set("anchor", pos)
 
 def export_mesh_geom(context, obj, xml, xml_asset, visualization_only=False):
     xml_geom = SubElement(xml, "geom")
@@ -243,7 +264,7 @@ def export_entity(context, obj, xml_model, body_is_root, xml_asset):
 
     else:
         print(f"[ERROR] something has gone wrong exporting {obj.name}!")
-        assert(False)
+        assert False, "Object type not recognized for MJCF export"
 
 
     # how to handle joints that are in parallel?
@@ -282,7 +303,7 @@ def export_tree(context):
     xml_light_tmp.set("dir", "-0.9 -0.3 -2.5")
                 
     export_actuators(context, xml_root)
-    xml_equality = SubElement(xml_root, "equality") # TODO
+    export_equalities(context, xml_root)
     xml_sensor = SubElement(xml_root, "sensor") # TODO
 
     export_pretty(context, xml_root)
@@ -464,6 +485,16 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
                     row.prop(obj, "sk_actuator_forcelimit_lower", text="lower")
                     row.prop(obj, "sk_actuator_forcelimit_upper", text="upper")
 
+        if obj.enum_sk_type == "equality":
+            row = layout.row()
+            row.prop(obj, "sk_equality_type", text="Type")
+
+            row = layout.row()
+            row.prop(obj, "sk_equality_entity1", text="Entity 1")
+
+            row = layout.row()
+            row.prop(obj, "sk_equality_entity2", text="Entity 2")
+
 enum_joint_type_options = [
     ('free', 'Free', '', 1),
     ('ball', 'Ball', '', 2),
@@ -480,7 +511,8 @@ enum_joint_axis_options = [
 enum_sk_type = [
     ('body', 'body', 'body'),
     ('joint', 'joint', 'joint'),
-    ('geom', 'geom', 'geom')
+    ('geom', 'geom', 'geom'),
+    ('equality', 'equality', 'equality')
     ]
     
 enum_geom_type_options = [
@@ -501,6 +533,14 @@ enum_actuator_type = [
     3*('velocity',),
     3*('cylinder',), # TODO pneumatic or hydraulics
     3*('muscle',) # TODO 
+]
+
+enum_equality_type = [
+    3*("connect",),
+    3*("weld",),
+    3*("joint",), # gears, differentials, etc.polynomial function
+    3*("tendon",),
+    3*("distance",)
 ]
 
 def register():
@@ -540,6 +580,12 @@ def register():
     bpy.types.Object.sk_actuator_forcelimited = bpy.props.BoolProperty(name="forcelimited", default=False) 
     bpy.types.Object.sk_actuator_forcelimit_upper = bpy.props.FloatProperty(name="forcelimit_upper", default=0, soft_min=-50, soft_max=50, unit="NONE", step=step_angle_ui)
     bpy.types.Object.sk_actuator_forcelimit_lower = bpy.props.FloatProperty(name="forcelimit_lower", default=0, soft_min=-50, soft_max=50, unit="NONE", step=step_angle_ui)
+
+    # Equality Constraint Properties
+    bpy.types.Object.sk_equality_type = bpy.props.EnumProperty(items=enum_equality_type)
+    bpy.types.Object.sk_equality_entity1 = bpy.props.PointerProperty(type=bpy.types.Object, name="sk_equality_entity1", description="equality entity 1", update=None)
+    bpy.types.Object.sk_equality_entity2 = bpy.props.PointerProperty(type=bpy.types.Object, name="sk_equality_entity2", description="equality entity 2", update=None)
+    # TODO properties for joint and tendon type equalitiy
 
     bpy.utils.register_class(MJCFExportOperator)
     bpy.utils.register_class(SimpleKinematicsJointPanel)
