@@ -50,7 +50,10 @@ def export_pretty(context, xml_root):
 # tells joints which joints are DOWNSTREAM of them
 # bodies must be the children of bodies, not the children of joints here
 
+actuator_list = []
+
 def build_kinematic_tree(context):
+    actuator_list.clear()
     for obj in context.scene.objects:
         obj['sk_child_entity_list'] = {}
     
@@ -72,6 +75,13 @@ def build_kinematic_tree(context):
             dict_tmp = context.scene.objects[parent.name]['sk_child_entity_list']
             dict_tmp[repr(len(dict_tmp.keys())+1)] = obj
 
+        # register actuators on the actuator list
+        if obj.enum_sk_type == "joint" and obj.sk_is_actuator:
+            print(f"append actuator {obj.name}")
+            actuator_list.append(obj)
+
+    print("completed list of actuator joint objects:", actuator_list)
+
 def export_stl(context, obj):
     print(f"Exporting STL for object {obj.name}")
     # store the active object so it can be restored later
@@ -92,28 +102,6 @@ def export_stl(context, obj):
     # restore selection
     bpy.ops.object.select_all(action='DESELECT')
     sel_obj.select_set(True)
-    
-def export_link_stl_collision(context, obj, xml_link):
-    xml_collision = SubElement(xml_link, "collision")
-    xml_collision.set("name", obj.name+"_collision")
-
-    # change to collision object if one is defined    
-    obj_collision = obj
-
-    xml_pose(context, obj_collision, xml_collision)
-
-    xml_geometry = SubElement(xml_collision, "geometry")
-    export_stl(context, obj, xml_geometry)
- 
-def export_link_stl_visual(context, obj, xml_link):   
-    # get the pose
-    xml_visual = SubElement(xml_link, 'visual')
-    xml_visual.set('name', obj.name + '_visual')
-    xml_geometry = SubElement(xml_visual, 'geometry')
-    
-    xml_pose(context, obj, xml_visual)
-
-    export_stl(context, obj, xml_geometry)
 
 def export_options(xml_root): # TODO expose these in some sort of UI panel
     xml_compiler = SubElement(xml_root, "compiler")
@@ -134,13 +122,34 @@ def export_setup_folders():
 def export_defaults(): # TODO
     pass
 
-def export_mesh_geom(context, obj, xml, xml_asset):
+def export_actuators(context, xml):
+    xml_actuator_list = SubElement(xml, "actuator") # TODO position and velocity types with kv, kp
+    print("exporting actuators! list is:", actuator_list)
+    for act in actuator_list:
+        xml_act = SubElement(xml_actuator_list, act.sk_actuator_type)
+        xml_act.set("name", "act_"+act.name)
+        xml_act.set("joint", act.name)
+
+        xml_act.set("ctrllimited", repr(act.sk_actuator_ctrllimited).lower())
+        if act.sk_actuator_ctrllimited:
+            xml_act.set("ctrlrange", repr(act.sk_actuator_ctrllimit_lower) + " " + repr(act.sk_actuator_ctrllimit_upper))
+
+        xml_act.set("forcelimited", repr(act.sk_actuator_forcelimited).lower())
+        if act.sk_actuator_forcelimited:
+            xml_act.set("forcerange", repr(act.sk_actuator_forcelimit_lower) + " " + repr(act.sk_actuator_forcelimit_upper))
+
+def export_mesh_geom(context, obj, xml, xml_asset, visualization_only=False):
     xml_geom = SubElement(xml, "geom")
     xml_geom.set("name", obj.name)
     xml_geom.set("type", "mesh")
     xml_geom.set("pos", "0 0 0")
     xml_geom.set("quat", "1 0 0 0")
-    xml_geom.set("mass", repr(obj.sk_mass))
+    if visualization_only:
+        xml_geom.set("mass", "0")
+        xml_geom.set("contype", "0")
+        xml_geom.set("conaffinity", "0")
+    else:
+        xml_geom.set("mass", repr(obj.sk_mass))
     xml_geom.set("mesh", "mesh_" + obj.name)
 
     xml_stl = SubElement(xml_asset, "mesh")
@@ -155,8 +164,7 @@ def export_entity(context, obj, xml_model, body_is_root, xml_asset):
         tf = obj.sk_parent_entity.matrix_world.inverted_safe() @ obj.matrix_world
         pos = repr(tf.translation[0]) + " " + repr(tf.translation[1]) + " " + repr(tf.translation[2])
 
-        # TODO verify orientation quaternion
-        # relative to the parent?
+        # relative to the parent
         q = tf.to_quaternion()
         quat = repr(q[0]) + " " + repr(q[1]) + " " + repr(q[2]) + " " + repr(q[3])
 
@@ -171,11 +179,16 @@ def export_entity(context, obj, xml_model, body_is_root, xml_asset):
         xml_entity.set("quat", quat)
         xml_entity.set("mass", repr(obj.sk_mass))
 
+        xml_entity.set("rgba", "0.5 0.5 0.5 0.1")
+        #TODO rgba - color from parent body material first index
+        #TODO contype, conaffinity
+        #TODO friction
+
+
     elif obj.enum_sk_type == "joint":
         print(f"Exporting {obj.name} as JOINT")
-        # TODO how to handle multiple joints attached to the same body?
-        # export_joint(context, joint, xml_entity, False)
         xml_entity = SubElement(xml_model, "joint")
+        xml_entity.set("name", obj.name)
         xml_entity.set("type", obj.enum_joint_type)
         xml_entity.set("pos", pos)
 
@@ -187,6 +200,9 @@ def export_entity(context, obj, xml_model, body_is_root, xml_asset):
         xml_entity.set("axis", repr(axis_parent[0]) + " " + repr(axis_parent[1]) + " " + repr(axis_parent[2]))
 
         # TODO stiffness damping, other properties
+        xml_entity.set("stiffness", repr(obj.sk_joint_stiffness))
+        xml_entity.set("damping", repr(obj.sk_joint_damping))
+        xml_entity.set("springref", repr(obj.sk_joint_springref))
 
         if obj.enum_joint_type != "free":
             xml_entity.set("limited", repr(obj.sk_axis_limit).lower())
@@ -199,7 +215,6 @@ def export_entity(context, obj, xml_model, body_is_root, xml_asset):
                     xml_entity.set("range", repr(obj.sk_axis_lower_rot) + " " + repr(obj.sk_axis_upper_rot))
 
         for j, child in obj['sk_child_entity_list'].iteritems():
-            print("calling child: ", child)
             export_entity(context, child, xml_model, False, xml_asset)
 
     elif obj.enum_sk_type == "body":
@@ -217,15 +232,18 @@ def export_entity(context, obj, xml_model, body_is_root, xml_asset):
             xml_entity.set("pos", pos)
             xml_entity.set("quat", quat)
             
+            # always export a STL mesh, but only let it be the physics geom
             if not obj.sk_use_primitive_geom:
-                export_mesh_geom(context, obj, xml_entity, xml_asset)
+                export_mesh_geom(context, obj, xml_entity, xml_asset, visualization_only=False)
+            else:
+                export_mesh_geom(context, obj, xml_entity, xml_asset, visualization_only=True)
 
         for j, child in obj['sk_child_entity_list'].iteritems():
-            print("calling child: ", child)
             export_entity(context, child, xml_entity, False, xml_asset)
 
     else:
         print(f"[ERROR] something has gone wrong exporting {obj.name}!")
+        assert(False)
 
 
     # how to handle joints that are in parallel?
@@ -263,7 +281,7 @@ def export_tree(context):
     xml_light_tmp.set("pos", "0.9 0.3 2.5")
     xml_light_tmp.set("dir", "-0.9 -0.3 -2.5")
                 
-    xml_actuator = SubElement(xml_root, "actuator") # TODO
+    export_actuators(context, xml_root)
     xml_equality = SubElement(xml_root, "equality") # TODO
     xml_sensor = SubElement(xml_root, "sensor") # TODO
 
@@ -335,11 +353,12 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
         layout = self.layout
         obj = context.object
 
-        row = layout.row()
-        row.prop(context.scene, "robot_name", text="Robot Name")
-        
-        row = layout.row()
-        row.operator('sk.export_mjcf', text="Export using this object as root").action = 'MJCF'
+        if obj.enum_sk_type == 'body':
+            row = layout.row()
+            row.prop(context.scene, "robot_name", text="Robot Name")
+            
+            row = layout.row()
+            row.operator('sk.export_mjcf', text="Export using this object as root").action = 'MJCF'
 
         row = layout.row()
         row.prop(obj, 'enum_sk_type', text='Type', expand=True)
@@ -399,8 +418,6 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
                    
             row = layout.row()
             row.prop(obj, 'enum_joint_type', text='joint type', expand=True)
-
-            # TODO stiffness, damping, etc.
             
             if obj.enum_joint_type == 'hinge' or obj.enum_joint_type == 'slide' or obj.enum_joint_type == 'ball':
                                     
@@ -422,17 +439,34 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
                         row.prop(obj, 'sk_axis_upper_rot', text='upper limit')
 
             row = layout.row()
+            row.label(text="Passive Properties")
+            row = layout.row()
+            row.prop(obj, "sk_joint_stiffness", text="Stiffness")
+            row.prop(obj, "sk_joint_springref", text="Position at Zero Spring Force")
+            row.prop(obj, "sk_joint_damping", text="Damping")
+
+            row = layout.row()
             row.prop(obj, "sk_is_actuator")
 
             if obj.sk_is_actuator:
                 row = layout.row()
-                row.label(text="TODO add some actuator properties!")
+                row.prop(obj, "sk_actuator_type", text="Actuator Type")
+
                 row = layout.row()
-                row.label(text="type, effort limits, reflected inertia...")
+                row.prop(obj, "sk_actuator_ctrllimited", text="Limit Command")
+                if obj.sk_actuator_ctrllimited:
+                    row.prop(obj, "sk_actuator_ctrllimit_lower", text="lower")
+                    row.prop(obj, "sk_actuator_ctrllimit_upper", text="upper")
+
+                row = layout.row()
+                row.prop(obj, "sk_actuator_forcelimited", text="Limit Force")
+                if obj.sk_actuator_forcelimited:
+                    row.prop(obj, "sk_actuator_forcelimit_lower", text="lower")
+                    row.prop(obj, "sk_actuator_forcelimit_upper", text="upper")
 
 enum_joint_type_options = [
-    ('free', 'Free', '', 1), # rules!
-    ('ball', 'Ball', '', 2), # rules! body cannot have other rotary joints but can have slide
+    ('free', 'Free', '', 1),
+    ('ball', 'Ball', '', 2),
     ('hinge', 'Hinge', '', 3),
     ('slide', 'Slide', '', 4)
     ]
@@ -460,6 +494,15 @@ enum_geom_type_options = [
     ('mesh', 'mesh', 'mesh')
     ]
 
+enum_actuator_type = [
+    3*('general',),
+    3*('motor',),
+    3*('position',),
+    3*('velocity',),
+    3*('cylinder',), # TODO pneumatic or hydraulics
+    3*('muscle',) # TODO 
+]
+
 def register():
     # step angle for UI drags
     step_angle_ui = 1500 # about 15 degrees
@@ -478,15 +521,25 @@ def register():
     # Joint Properties
     bpy.types.Object.enum_joint_type = bpy.props.EnumProperty(items=enum_joint_type_options)
     bpy.types.Object.enum_joint_axis = bpy.props.EnumProperty(items=enum_joint_axis_options, default="x")
-
     bpy.types.Object.sk_axis_limit = bpy.props.BoolProperty(name="sk_axis_limit", default=False)
     bpy.types.Object.sk_axis_lower_rot = bpy.props.FloatProperty(name="lower_rot", default=0, soft_min=-2*pi, soft_max=2*pi, unit="ROTATION", step=step_angle_ui)
     bpy.types.Object.sk_axis_upper_rot = bpy.props.FloatProperty(name="upper_rot", default=0, soft_min=-2*pi, soft_max=2*pi, unit="ROTATION", step=step_angle_ui)
     bpy.types.Object.sk_axis_lower_lin = bpy.props.FloatProperty(name="lower_lin", default=0, soft_min=-1, soft_max=1, unit="LENGTH", step=step_lin_ui)
     bpy.types.Object.sk_axis_upper_lin = bpy.props.FloatProperty(name="upper_lin", default=0, soft_min=-1, soft_max=1, unit="LENGTH", step=step_lin_ui)
+    bpy.types.Object.sk_joint_stiffness = bpy.props.FloatProperty(name="stiffness", default=0, soft_min=-1000, soft_max=1000, unit="NONE", step=step_lin_ui)
+    bpy.types.Object.sk_joint_damping = bpy.props.FloatProperty(name="damping", default=0, soft_min=-1000, soft_max=1000, unit="NONE", step=step_lin_ui)
+    bpy.types.Object.sk_joint_springref = bpy.props.FloatProperty(name="springref", default=0, soft_min=-1, soft_max=1, unit="NONE", step=step_lin_ui) # TODO rotary vs. linear
+    #TODO armature reflected inertia parameter
 
     # Actuator Properties
-    bpy.types.Object.sk_is_actuator = bpy.props.BoolProperty(name="is_actuator", default=False)        
+    bpy.types.Object.sk_is_actuator = bpy.props.BoolProperty(name="is_actuator", default=False)    
+    bpy.types.Object.sk_actuator_type = bpy.props.EnumProperty(items=enum_actuator_type)
+    bpy.types.Object.sk_actuator_ctrllimited = bpy.props.BoolProperty(name="ctrllimited", default=False) 
+    bpy.types.Object.sk_actuator_ctrllimit_upper = bpy.props.FloatProperty(name="ctrllimit_upper", default=0, soft_min=-50, soft_max=50, unit="NONE", step=step_angle_ui)
+    bpy.types.Object.sk_actuator_ctrllimit_lower = bpy.props.FloatProperty(name="ctrllimit_lower", default=0, soft_min=-50, soft_max=50, unit="NONE", step=step_angle_ui)
+    bpy.types.Object.sk_actuator_forcelimited = bpy.props.BoolProperty(name="forcelimited", default=False) 
+    bpy.types.Object.sk_actuator_forcelimit_upper = bpy.props.FloatProperty(name="forcelimit_upper", default=0, soft_min=-50, soft_max=50, unit="NONE", step=step_angle_ui)
+    bpy.types.Object.sk_actuator_forcelimit_lower = bpy.props.FloatProperty(name="forcelimit_lower", default=0, soft_min=-50, soft_max=50, unit="NONE", step=step_angle_ui)
 
     bpy.utils.register_class(MJCFExportOperator)
     bpy.utils.register_class(SimpleKinematicsJointPanel)
