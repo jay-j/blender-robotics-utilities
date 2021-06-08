@@ -171,6 +171,8 @@ def export_mesh_geom(context, obj, xml, xml_asset, visualization_only=False):
         xml_geom.set("conaffinity", "0")
     else:
         xml_geom.set("mass", repr(obj.sk_mass))
+        xml_geom.set("contype", repr(obj.sk_contype))
+        xml_geom.set("conaffinity", repr(obj.sk_conaffinity))
     xml_geom.set("mesh", "mesh_" + obj.name)
 
     xml_stl = SubElement(xml_asset, "mesh")
@@ -201,10 +203,10 @@ def export_entity(context, obj, xml_model, body_is_root, xml_asset):
         xml_entity.set("mass", repr(obj.sk_mass))
 
         xml_entity.set("rgba", "0.5 0.5 0.5 0.1")
+        xml_entity.set("contype", repr(obj.sk_contype))
+        xml_entity.set("conaffinity", repr(obj.sk_conaffinity))
         #TODO rgba - color from parent body material first index
-        #TODO contype, conaffinity
         #TODO friction
-
 
     elif obj.enum_sk_type == "joint":
         print(f"Exporting {obj.name} as JOINT")
@@ -220,10 +222,12 @@ def export_entity(context, obj, xml_model, body_is_root, xml_asset):
 
         xml_entity.set("axis", repr(axis_parent[0]) + " " + repr(axis_parent[1]) + " " + repr(axis_parent[2]))
 
-        # TODO stiffness damping, other properties
         xml_entity.set("stiffness", repr(obj.sk_joint_stiffness))
         xml_entity.set("damping", repr(obj.sk_joint_damping))
-        xml_entity.set("springref", repr(obj.sk_joint_springref))
+        if obj.enum_joint_type == "slide":
+            xml_entity.set("springref", repr(obj.sk_joint_springref_lin))
+        else:
+            xml_entity.set("springref", repr(obj.sk_joint_springref_rot))
 
         if obj.enum_joint_type != "free":
             xml_entity.set("limited", repr(obj.sk_axis_limit).lower())
@@ -266,9 +270,6 @@ def export_entity(context, obj, xml_model, body_is_root, xml_asset):
         print(f"[ERROR] something has gone wrong exporting {obj.name}!")
         assert False, "Object type not recognized for MJCF export"
 
-
-    # how to handle joints that are in parallel?
-
 # follows an already-explored tree to add links and joints to the xml data    
 def export_tree(context):
     root = context.object
@@ -286,10 +287,7 @@ def export_tree(context):
 
     xml_worldbody = SubElement(xml_root, "worldbody")
     
-    # TODO search the scene for root object(s) - and static ground geometries
-    # maybe have a world/ground empty? that can consistently start everything, have things referenced to it!
-
-    # explore the kinematic tree from root down
+    # explore the kinematic tree from root (selected object) down
     export_entity(context, root, xml_worldbody, True, xml_asset)
 
     # TODO lights and cameras inside worldbody
@@ -386,8 +384,6 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
         
         if obj.enum_sk_type == 'body':
 
-            # TODO if body is to built of geoms, then those should drive the mass
-
             row = layout.row()
             row.prop(obj, "sk_parent_entity", text="Parent Body")
 
@@ -396,11 +392,15 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
 
             if obj.sk_use_primitive_geom:
                 row = layout.row()
-                row.label(text="Derived Mass (kg): TODO")
+                row.label(text="Derived Mass (kg): TODO") # if body is to built of geoms, then those should drive the mass
 
             else:
                 row = layout.row()
                 row.prop(obj, 'sk_mass', text='Mass (kg)')
+
+                row = layout.row()
+                row.prop(obj, "sk_contype")
+                row.prop(obj, "sk_conaffinity")
 
         if obj.enum_sk_type == "geom":
             if obj.type != "EMPTY":
@@ -412,6 +412,10 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
 
                 row = layout.row()
                 row.prop(obj, "sk_parent_entity", text="Parent Body")
+
+                row = layout.row()
+                row.prop(obj, "sk_contype")
+                row.prop(obj, "sk_conaffinity")
 
                 row = layout.row()
                 row.prop(obj, 'sk_geom_type', text='Type')
@@ -463,7 +467,10 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
             row.label(text="Passive Properties")
             row = layout.row()
             row.prop(obj, "sk_joint_stiffness", text="Stiffness")
-            row.prop(obj, "sk_joint_springref", text="Position at Zero Spring Force")
+            if obj.enum_joint_type == "slide":
+                row.prop(obj, "sk_joint_springref_lin", text="Position at Zero Spring Force")
+            else:
+                row.prop(obj, "sk_joint_springref_rot", text="Position at Zero Spring Force")
             row.prop(obj, "sk_joint_damping", text="Damping")
 
             row = layout.row()
@@ -557,6 +564,8 @@ def register():
     bpy.types.Object.sk_mass = bpy.props.FloatProperty(name='sk_mass', default=1)
     bpy.types.Object.sk_use_primitive_geom = bpy.props.BoolProperty(name="use_primitive_geom", default=True)
     bpy.types.Object.sk_geom_type = bpy.props.EnumProperty(items=enum_geom_type_options)
+    bpy.types.Object.sk_contype = bpy.props.IntProperty(name="sk_contype", default=1)
+    bpy.types.Object.sk_conaffinity = bpy.props.IntProperty(name="sk_conaffinity", default=1)
 
     # Joint Properties
     bpy.types.Object.enum_joint_type = bpy.props.EnumProperty(items=enum_joint_type_options)
@@ -568,7 +577,8 @@ def register():
     bpy.types.Object.sk_axis_upper_lin = bpy.props.FloatProperty(name="upper_lin", default=0, soft_min=-1, soft_max=1, unit="LENGTH", step=step_lin_ui)
     bpy.types.Object.sk_joint_stiffness = bpy.props.FloatProperty(name="stiffness", default=0, soft_min=-1000, soft_max=1000, unit="NONE", step=step_lin_ui)
     bpy.types.Object.sk_joint_damping = bpy.props.FloatProperty(name="damping", default=0, soft_min=-1000, soft_max=1000, unit="NONE", step=step_lin_ui)
-    bpy.types.Object.sk_joint_springref = bpy.props.FloatProperty(name="springref", default=0, soft_min=-1, soft_max=1, unit="NONE", step=step_lin_ui) # TODO rotary vs. linear
+    bpy.types.Object.sk_joint_springref_lin = bpy.props.FloatProperty(name="springref_lin", default=0, soft_min=-1, soft_max=1, unit="LENGTH", step=step_lin_ui)
+    bpy.types.Object.sk_joint_springref_rot = bpy.props.FloatProperty(name="springref_rot", default=0, soft_min=-1, soft_max=1, unit="ROTATION", step=step_angle_ui)
     #TODO armature reflected inertia parameter
 
     # Actuator Properties
