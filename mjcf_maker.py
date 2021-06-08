@@ -215,14 +215,16 @@ def export_entity(context, obj, xml_model, body_is_root, xml_asset):
         xml_entity = SubElement(xml_model, "joint")
         xml_entity.set("name", obj.name)
         xml_entity.set("type", obj.enum_joint_type)
-        xml_entity.set("pos", pos)
+        
 
         parent_tmp = obj.sk_parent_entity
         attempts = 0
         while parent_tmp.enum_sk_type != "body":
+            print(f"    going up a level..")
             parent_tmp = parent_tmp.sk_parent_entity
             attempts += 1
             assert attempts < 512, "bad kinematic tree, joint belongs to no body"
+        print(f"   Going to use the parent object: {parent_tmp.name}") # this gets the correct answer - the intended body
 
         axis_dict = {"x":Vector([1,0,0]), "y":Vector([0,1,0]), "z":Vector([0,0,1]), "":Vector([0,0,0])}
         axis_local = axis_dict[obj.enum_joint_axis]
@@ -230,6 +232,12 @@ def export_entity(context, obj, xml_model, body_is_root, xml_asset):
         axis_parent = parent_tmp.matrix_world.inverted_safe().to_3x3() @ axis_global
 
         xml_entity.set("axis", repr(axis_parent[0]) + " " + repr(axis_parent[1]) + " " + repr(axis_parent[2]))
+
+        # re-do the position calculation to allow for the multi-joint situations
+        tf = parent_tmp.matrix_world.inverted_safe() @ obj.matrix_world
+        pos = repr(tf.translation[0]) + " " + repr(tf.translation[1]) + " " + repr(tf.translation[2])
+
+        xml_entity.set("pos", pos)
 
         xml_entity.set("stiffness", repr(obj.sk_joint_stiffness))
         xml_entity.set("damping", repr(obj.sk_joint_damping))
