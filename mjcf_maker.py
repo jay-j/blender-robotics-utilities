@@ -111,6 +111,7 @@ def export_stl(context, obj):
 def export_options(xml_root): # TODO expose these in some sort of UI panel
     xml_compiler = SubElement(xml_root, "compiler")
     xml_compiler.set("angle", "radian")
+    xml_compiler.set("coordinate", "local")
 
     xml_options = SubElement(xml_root, "option")
     xml_options.set("timestep", "0.001")
@@ -210,15 +211,23 @@ def export_entity(context, obj, xml_model, body_is_root, xml_asset):
 
     elif obj.enum_sk_type == "joint":
         print(f"Exporting {obj.name} as JOINT")
+        print(f"   this has sk_parent_entity: {obj.sk_parent_entity}")
         xml_entity = SubElement(xml_model, "joint")
         xml_entity.set("name", obj.name)
         xml_entity.set("type", obj.enum_joint_type)
         xml_entity.set("pos", pos)
 
+        parent_tmp = obj.sk_parent_entity
+        attempts = 0
+        while parent_tmp.enum_sk_type != "body":
+            parent_tmp = parent_tmp.sk_parent_entity
+            attempts += 1
+            assert attempts < 512, "bad kinematic tree, joint belongs to no body"
+
         axis_dict = {"x":Vector([1,0,0]), "y":Vector([0,1,0]), "z":Vector([0,0,1]), "":Vector([0,0,0])}
         axis_local = axis_dict[obj.enum_joint_axis]
         axis_global = obj.matrix_world.to_3x3() @ axis_local
-        axis_parent = obj.sk_parent_entity.matrix_world.inverted_safe().to_3x3() @ axis_global
+        axis_parent = parent_tmp.matrix_world.inverted_safe().to_3x3() @ axis_global
 
         xml_entity.set("axis", repr(axis_parent[0]) + " " + repr(axis_parent[1]) + " " + repr(axis_parent[2]))
 
@@ -345,7 +354,7 @@ def calculate_geom_size(obj):
 
     if obj.sk_geom_type == "cylinder":
         # radius; length
-        size = [abs(obj.scale[1]), abs(2*obj.scale[0])]
+        size = [abs(obj.scale[1]), abs(obj.scale[0])]
 
     if obj.sk_geom_type == "box":
         # x y z
