@@ -73,10 +73,15 @@ def build_kinematic_tree(context):
                     attempts += 1
                     assert attempts < attempt_limit, "Some tangle in the kinematic tree."
 
+            try:
+                x = context.scene.objects[parent.name]
+            except:
+                assert False, f"When investigating {obj.name} can't find parent {parent.name}"
+
             # now register with the parent
             dict_tmp = context.scene.objects[parent.name]['sk_child_entity_list']
             dict_tmp[repr(len(dict_tmp.keys())+1)] = obj
-
+           
         # register actuators on the actuator list
         if obj.enum_sk_type == "joint" and obj.sk_is_actuator:
             print(f"append actuator {obj.name}")
@@ -115,10 +120,19 @@ def export_options(xml_root): # TODO expose these in some sort of UI panel
 
     xml_options = SubElement(xml_root, "option")
     xml_options.set("timestep", "0.001")
-    xml_options.set("iterations", "20")
+    xml_options.set("iterations", "100") # was using 20. 100 is default
+    #xml_options.set("integrator", "RK4") # Euler, RK4; Euler default
+    xml_options.set("o_solref", "0.001 1")
+    xml_options.set("o_solimp", "0.99 0.96 0.001")
 
-    xml_sensornoise = SubElement(xml_options, "flag")
-    xml_sensornoise.set("sensornoise", "enable")
+    xml_flags = SubElement(xml_options, "flag")
+    xml_flags.set("sensornoise", "enable")
+    xml_flags.set("override", "enable") # will use the o_solref parameters
+
+    xml_size = SubElement(xml_root, "size")
+    xml_size.set("nconmax", "2048") # TODO provide some user control. -1 will do auto!
+    xml_size.set("njmax", "2048") # TODO provide a user control. -1 will do automatic
+    # TODO need "harder" contact constraint forces to react penetrations from tensioned track & springs
 
 def export_setup_folders():
     if not os.path.exists(bpy.path.abspath('//mesh_stl')):
@@ -144,6 +158,9 @@ def export_actuators(context, xml):
         if act.sk_actuator_forcelimited:
             xml_act.set("forcerange", repr(act.sk_actuator_forcelimit_lower) + " " + repr(act.sk_actuator_forcelimit_upper))
 
+        if act.sk_actuator_type == "velocity":
+            xml_act.set("kv", repr(act.sk_actuator_kv))
+
 def export_equalities(context, xml):
     xml_equality_list = SubElement(xml, "equality")
     for eq in equality_list:
@@ -159,6 +176,11 @@ def export_equalities(context, xml):
             pos = repr(tf.translation[0]) + " " + repr(tf.translation[1]) + " " + repr(tf.translation[2])
 
             xml_eq.set("anchor", pos)
+
+            if not eq.sk_equality_solref == "":
+                xml_eq.set("solref", eq.sk_equality_solref)
+            if not eq.sk_equality_solimp == "":
+                xml_eq.set("solimp", eq.sk_equality_solimp)
 
 def export_mesh_geom(context, obj, xml, xml_asset, visualization_only=False):
     xml_geom = SubElement(xml, "geom")
@@ -206,6 +228,7 @@ def export_entity(context, obj, xml_model, body_is_root, xml_asset):
         xml_entity.set("rgba", "0.5 0.5 0.5 0.1")
         xml_entity.set("contype", repr(obj.sk_contype))
         xml_entity.set("conaffinity", repr(obj.sk_conaffinity))
+        #xml_entity.set("solref", "0.005, 1")
         #TODO rgba - color from parent body material first index
         #TODO friction
 
@@ -509,6 +532,10 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
                     row.prop(obj, "sk_actuator_forcelimit_lower", text="lower")
                     row.prop(obj, "sk_actuator_forcelimit_upper", text="upper")
 
+                if obj.sk_actuator_type == "velocity":
+                    row = layout.row()
+                    row.prop(obj, "sk_actuator_kv", text="velocity feedback gain kv")
+
         if obj.enum_sk_type == "equality":
             row = layout.row()
             row.prop(obj, "sk_equality_type", text="Type")
@@ -518,6 +545,12 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
 
             row = layout.row()
             row.prop(obj, "sk_equality_entity2", text="Entity 2")
+
+            row = layout.row()
+            row.prop(obj, "sk_equality_solref", text="solref string")
+
+            row = layout.row()
+            row.prop(obj, "sk_equality_solimp", text="solimp string")
 
 enum_joint_type_options = [
     ('free', 'Free', '', 1),
@@ -607,11 +640,14 @@ def register():
     bpy.types.Object.sk_actuator_forcelimited = bpy.props.BoolProperty(name="forcelimited", default=False) 
     bpy.types.Object.sk_actuator_forcelimit_upper = bpy.props.FloatProperty(name="forcelimit_upper", default=0, soft_min=-50, soft_max=50, unit="NONE", step=step_angle_ui)
     bpy.types.Object.sk_actuator_forcelimit_lower = bpy.props.FloatProperty(name="forcelimit_lower", default=0, soft_min=-50, soft_max=50, unit="NONE", step=step_angle_ui)
+    bpy.types.Object.sk_actuator_kv = bpy.props.FloatProperty(name="actuator_kv", default=1, soft_min=0, soft_max=10, unit="NONE")
 
     # Equality Constraint Properties
     bpy.types.Object.sk_equality_type = bpy.props.EnumProperty(items=enum_equality_type)
     bpy.types.Object.sk_equality_entity1 = bpy.props.PointerProperty(type=bpy.types.Object, name="sk_equality_entity1", description="equality entity 1", update=None)
     bpy.types.Object.sk_equality_entity2 = bpy.props.PointerProperty(type=bpy.types.Object, name="sk_equality_entity2", description="equality entity 2", update=None)
+    bpy.types.Object.sk_equality_solref = bpy.props.StringProperty(name="sk_equality_solref", default="")
+    bpy.types.Object.sk_equality_solimp = bpy.props.StringProperty(name="sk_equality_solimp", default="")
     # TODO properties for joint and tendon type equalitiy
 
     bpy.utils.register_class(MJCFExportOperator)
