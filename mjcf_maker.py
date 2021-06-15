@@ -52,15 +52,17 @@ def export_pretty(context, xml_root):
 
 actuator_list = []
 equality_list = []
+sensor_list = []
 
 def build_kinematic_tree(context):
     actuator_list.clear()
     equality_list.clear()
+    sensor_list.clear()
     for obj in context.scene.objects:
         obj['sk_child_entity_list'] = {}
     
     for obj in context.scene.objects:
-        if (obj.enum_sk_type == "body" or obj.enum_sk_type == "joint" or obj.enum_sk_type == "geom") and not( obj.sk_parent_entity == None):
+        if (["body", "joint", "geom", "site"].count(obj.enum_sk_type) > 0 ) and not( obj.sk_parent_entity == None):
 
             parent = obj.sk_parent_entity
             if obj.enum_sk_type == "body":
@@ -90,6 +92,10 @@ def build_kinematic_tree(context):
         if obj.enum_sk_type == "equality":
             print(f"append equality {obj.name}")
             equality_list.append(obj)
+
+        if obj.enum_sk_type == "sensor":
+            print(f"append sensor {obj.name}")
+            sensor_list.append(obj)
 
 
 def export_stl(context, obj):
@@ -142,8 +148,18 @@ def export_setup_folders():
 def export_defaults(): # TODO
     pass
 
+def export_sensors(context, xml):
+    xml_sensor_list = SubElement(xml, "sensor")
+    print("Exporting sensors")
+    for sen in sensor_list:
+        # TODO rangefinder hack
+        xml_sen = SubElement(xml_sensor_list, sen.sk_sensor_type)
+        xml_sen.set("name", "sensor_"+sen.name)
+        xml_sen.set("site", sen.sk_parent_entity.name)
+
+
 def export_actuators(context, xml):
-    xml_actuator_list = SubElement(xml, "actuator") # TODO position and velocity types with kv, kp
+    xml_actuator_list = SubElement(xml, "actuator")
     print("exporting actuators! list is:", actuator_list)
     for act in actuator_list:
         xml_act = SubElement(xml_actuator_list, act.sk_actuator_type)
@@ -160,6 +176,9 @@ def export_actuators(context, xml):
 
         if act.sk_actuator_type == "velocity":
             xml_act.set("kv", repr(act.sk_actuator_kv))
+
+        if act.sk_actuator_type == "position":
+            xml_act.set("kp", repr(act.sk_actuator_kp))
 
 def export_equalities(context, xml):
     xml_equality_list = SubElement(xml, "equality")
@@ -231,6 +250,13 @@ def export_entity(context, obj, xml_model, body_is_root, xml_asset):
         #xml_entity.set("solref", "0.005, 1")
         #TODO rgba - color from parent body material first index
         #TODO friction
+
+    elif obj.enum_sk_type == "site":
+        print(f"Exporting {obj.name} as SITE")
+        xml_entity = SubElement(xml_model, "site")
+        xml_entity.set("name", obj.name)
+        xml_entity.set("pos", pos)
+        xml_entity.set("quat", quat)
 
     elif obj.enum_sk_type == "joint":
         print(f"Exporting {obj.name} as JOINT")
@@ -342,7 +368,7 @@ def export_tree(context):
                 
     export_actuators(context, xml_root)
     export_equalities(context, xml_root)
-    xml_sensor = SubElement(xml_root, "sensor") # TODO
+    export_sensors(context, xml_root)
 
     export_pretty(context, xml_root)
     
@@ -536,6 +562,10 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
                     row = layout.row()
                     row.prop(obj, "sk_actuator_kv", text="velocity feedback gain kv")
 
+                if obj.sk_actuator_type == "position":
+                    row = layout.row()
+                    row.prop(obj, "sk_actuator_kp", text="position feedback gain kp")
+
         if obj.enum_sk_type == "equality":
             row = layout.row()
             row.prop(obj, "sk_equality_type", text="Type")
@@ -551,6 +581,18 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
 
             row = layout.row()
             row.prop(obj, "sk_equality_solimp", text="solimp string")
+
+        if obj.enum_sk_type == "site":
+            row = layout.row()
+            row.prop(obj, "sk_parent_entity", text="Parent Body")
+
+        if obj.enum_sk_type == "sensor":
+            row = layout.row()
+            row.prop(obj, "sk_sensor_type", text="Sensor Type")
+
+            row = layout.row()
+            row.prop(obj, "sk_parent_entity", text="Parent Body")
+
 
 enum_joint_type_options = [
     ('free', 'Free', '', 1),
@@ -569,7 +611,9 @@ enum_sk_type = [
     ('body', 'body', 'body'),
     ('joint', 'joint', 'joint'),
     ('geom', 'geom', 'geom'),
-    ('equality', 'equality', 'equality')
+    ('equality', 'equality', 'equality'),
+    3*("site",),
+    3*("sensor",)
     ]
     
 enum_geom_type_options = [
@@ -598,6 +642,11 @@ enum_equality_type = [
     3*("joint",), # gears, differentials, etc.polynomial function
     3*("tendon",),
     3*("distance",)
+]
+
+enum_sensor_type = [
+    3*("rangefinder",),
+    # TODO many more types!!
 ]
 
 def register():
@@ -641,6 +690,7 @@ def register():
     bpy.types.Object.sk_actuator_forcelimit_upper = bpy.props.FloatProperty(name="forcelimit_upper", default=0, soft_min=-50, soft_max=50, unit="NONE", step=step_angle_ui)
     bpy.types.Object.sk_actuator_forcelimit_lower = bpy.props.FloatProperty(name="forcelimit_lower", default=0, soft_min=-50, soft_max=50, unit="NONE", step=step_angle_ui)
     bpy.types.Object.sk_actuator_kv = bpy.props.FloatProperty(name="actuator_kv", default=1, soft_min=0, soft_max=10, unit="NONE")
+    bpy.types.Object.sk_actuator_kp = bpy.props.FloatProperty(name="actuator_kp", default=1, soft_min=0, soft_max=100, unit="NONE")
 
     # Equality Constraint Properties
     bpy.types.Object.sk_equality_type = bpy.props.EnumProperty(items=enum_equality_type)
@@ -649,6 +699,9 @@ def register():
     bpy.types.Object.sk_equality_solref = bpy.props.StringProperty(name="sk_equality_solref", default="")
     bpy.types.Object.sk_equality_solimp = bpy.props.StringProperty(name="sk_equality_solimp", default="")
     # TODO properties for joint and tendon type equalitiy
+
+    # Sensors
+    bpy.types.Object.sk_sensor_type = bpy.props.EnumProperty(items=enum_sensor_type)
 
     bpy.utils.register_class(MJCFExportOperator)
     bpy.utils.register_class(SimpleKinematicsJointPanel)
