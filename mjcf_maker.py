@@ -159,8 +159,6 @@ def export_camera(context, cam, xml_model):
     if cam.sk_camera_mode == "targetbody" or cam.sk_camera_mode == "targetbodycom":
         xml_camera.set("target", cam.sk_camera_target.name)
 
-    # find camera datablock name from the object name
-    # xml_camera.set("fovy", f"{bpy.data.cameras[cam.name].angle*180.0/pi:.2f}")
     xml_camera.set("fovy", f"{cam.data.angle*180.0/pi:.2f}")
 
     # pose information
@@ -213,17 +211,11 @@ def export_equalities(context, xml):
             xml_eq.set("body1", eq.sk_equality_entity1.name)
             if not eq.sk_equality_entity2 == None:
                 xml_eq.set("body2", eq.sk_equality_entity2.name)
-            # export position relative to entity 1 in anchor tag
 
+            # export position relative to entity 1 in anchor tag
             tf = eq.sk_equality_entity1.matrix_world.inverted_safe() @ eq.matrix_world
             pos = repr(tf.translation[0]) + " " + repr(tf.translation[1]) + " " + repr(tf.translation[2])
-
             xml_eq.set("anchor", pos)
-
-            if not eq.sk_equality_solref == "":
-                xml_eq.set("solref", eq.sk_equality_solref)
-            if not eq.sk_equality_solimp == "":
-                xml_eq.set("solimp", eq.sk_equality_solimp)
 
         if eq.sk_equality_type == "weld":
             xml_eq.set("body1", eq.sk_equality_entity1.name)
@@ -232,17 +224,31 @@ def export_equalities(context, xml):
 
             tf = eq.sk_equality_entity1.matrix_world.inverted_safe() @ eq.matrix_world
             pos = repr(tf.translation[0]) + " " + repr(tf.translation[1]) + " " + repr(tf.translation[2])
-
-            # relative to the parent
             q = tf.to_quaternion()
             quat = repr(q[0]) + " " + repr(q[1]) + " " + repr(q[2]) + " " + repr(q[3])
             xml_eq.set("relpose", pos + " " + quat)
 
-            if not eq.sk_equality_solref == "":
-                xml_eq.set("solref", eq.sk_equality_solref)
-            if not eq.sk_equality_solimp == "":
-                xml_eq.set("solimp", eq.sk_equality_solimp)
+            if eq.sk_solref_custom:
+                xml_eq.set("solref", f"{eq.sk_solref[0]} {eq.sk_solref[1]}")
+            if eq.sk_solimp_custom:
+                xml_eq.set("solimp", f"{eq.sk_solimp[0]} {eq.sk_solimp[1]} {eq.sk_solimp[2]}")
 
+        if eq.sk_equality_type == "tendon" or eq.sk_equality_type == "joint":
+            xml_eq.set(eq.sk_equality_type+"1", eq.sk_equality_entity1.name)
+            if not eq.sk_equality_entity2 == None:
+                xml_eq.set(eq.sk_equality_type+"2", eq.sk_equality_entity2.name)
+
+            xml_eq.set("polycoef", f"{eq.sk_equality_polycoef[0]} {eq.sk_equality_polycoef[1]} {eq.sk_equality_polycoef[2]} {eq.sk_equality_polycoef[3]} {eq.sk_equality_polycoef[4]}")
+
+        if eq.sk_equality_type == "distance":
+            xml_eq.set("geom1", eq.sq_equality_entity1.name)
+            xml_eq.set("geom2", eq.sk_equality_entity2.name)
+            xml_eq.set("distance", repr(eq.sk_equality_distance))
+
+        if eq.sk_solref_custom:
+            xml_eq.set("solref", f"{eq.sk_solref[0]} {eq.sk_solref[1]}")
+        if eq.sk_solimp_custom:
+            xml_eq.set("solimp", f"{eq.sk_solimp[0]} {eq.sk_solimp[1]} {eq.sk_solimp[2]}")
 
 
 def export_mesh_geom(context, obj, xml, xml_asset, visualization_only=False):
@@ -624,10 +630,24 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
             row.prop(obj, "sk_equality_entity2", text="Entity 2")
 
             row = layout.row()
-            row.prop(obj, "sk_equality_solref", text="solref string")
+            row.prop(obj, "sk_solref_custom", text="Custom Solver Parameter solref")
+            row = layout.row()
+            row.prop(obj, "sk_solref", text="solref")
+            row.active = obj.sk_solref_custom
 
             row = layout.row()
-            row.prop(obj, "sk_equality_solimp", text="solimp string")
+            row.prop(obj, "sk_solimp_custom", text="Custom Solver Parameter solimp")
+            row = layout.row()
+            row.prop(obj, "sk_solimp", text="solimp")
+            row.active = obj.sk_solimp_custom
+
+            if obj.sk_equality_type == "joint" or obj.sk_equality_type == "tendon":
+                row = layout.row()
+                row.prop(obj, "sk_equality_polycoef", text="Polynomial Coefficients")
+
+            if obj.sk_equality_type == "distance":
+                row = layout.row()
+                row.prop(obj, "sk_equality_distance", text="Distance")
 
         if obj.enum_sk_type == "site":
             row = layout.row()
@@ -661,7 +681,6 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
                     row = layout.row()
                     row.prop(camera_data, "angle", text="Camera Vertical FOV")
                     
-
                 row = layout.row()
                 row.prop(obj, "sk_parent_entity", text="Parent Body")
 
@@ -713,11 +732,11 @@ enum_actuator_type = [
 ]
 
 enum_equality_type = [
-    3*("connect",),
+    ("connect","connect: ball joint", "Connects two bodies at a point; a ball joint outside the kinematic tree."),
     3*("weld",),
-    3*("joint",), # gears, differentials, etc.polynomial function
+    ("joint","joint y=f(x)", "Constrains joint position y to be some polynomial function of joint position x."), # gears, differentials, etc.polynomial function
     3*("tendon",),
-    3*("distance",)
+    ("distance","distance (collision forcefield)", "Allows setting nonzero minimum distance between two geoms.")
 ]
 
 enum_sensor_type = [
@@ -742,6 +761,10 @@ def register():
     bpy.types.Scene.robot_name = bpy.props.StringProperty(name="robot_name", default="")
     bpy.types.Object.enum_sk_type = bpy.props.EnumProperty(items=enum_sk_type)
     bpy.types.Object.sk_parent_entity = bpy.props.PointerProperty(type=bpy.types.Object, name="sk_parent_entity", description="Simple Kinematics Parent Entity", update=None)
+    bpy.types.Object.sk_solref = bpy.props.FloatVectorProperty(name="sk_solref", size=2, default=[0.0005, 1], precision=4, description="(timeconst, dampratio). Should keep [time constant] > 2*[simulation stpe time]")
+    bpy.types.Object.sk_solref_custom = bpy.props.BoolProperty(name="sk_solref_custom", default=False)
+    bpy.types.Object.sk_solimp = bpy.props.FloatVectorProperty(name="sk_solimp", size=3, default=[2, 1.2, 0.001], precision=4)
+    bpy.types.Object.sk_solimp_custom = bpy.props.BoolProperty(name="sk_solimp_custom", default=False)
 
     # Body & Geom Properties
     bpy.types.Object.sk_mass = bpy.props.FloatProperty(name='sk_mass', default=1)
@@ -780,9 +803,8 @@ def register():
     bpy.types.Object.sk_equality_type = bpy.props.EnumProperty(items=enum_equality_type)
     bpy.types.Object.sk_equality_entity1 = bpy.props.PointerProperty(type=bpy.types.Object, name="sk_equality_entity1", description="equality entity 1", update=None)
     bpy.types.Object.sk_equality_entity2 = bpy.props.PointerProperty(type=bpy.types.Object, name="sk_equality_entity2", description="equality entity 2", update=None)
-    bpy.types.Object.sk_equality_solref = bpy.props.StringProperty(name="sk_equality_solref", default="")
-    bpy.types.Object.sk_equality_solimp = bpy.props.StringProperty(name="sk_equality_solimp", default="")
-    # TODO properties for joint and tendon type equalitiy
+    bpy.types.Object.sk_equality_polycoef = bpy.props.FloatVectorProperty(name="sk_equality_polycoef", size=5, description="y-y0 = a0 + a1*(x-x0) + a2*(x-x0)^2 + a3*(x-x0)^3 + a4*(x-x0)^4")
+    bpy.types.Object.sk_equality_distance = bpy.props.FloatProperty(name="sk_equality_distance", description="distance", unit="LENGTH")
 
     # Sensors
     bpy.types.Object.sk_sensor_type = bpy.props.EnumProperty(items=enum_sensor_type)
