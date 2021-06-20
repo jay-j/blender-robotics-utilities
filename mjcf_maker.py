@@ -22,6 +22,7 @@ import bpy
 import time
 from math import pi
 from mathutils import Vector
+from math import pi
 import os
 from xml.etree import ElementTree
 from xml.etree.ElementTree import Element, SubElement, Comment, tostring
@@ -62,7 +63,7 @@ def build_kinematic_tree(context):
         obj['sk_child_entity_list'] = {}
 
     for obj in context.scene.objects:
-        if (["body", "joint", "geom", "site"].count(obj.enum_sk_type) > 0 ) and not( obj.sk_parent_entity == None):
+        if (["body", "joint", "geom", "site", "camera"].count(obj.enum_sk_type) > 0 ) and not( obj.sk_parent_entity == None):
 
             parent = obj.sk_parent_entity
             if obj.enum_sk_type == "body":
@@ -84,7 +85,7 @@ def build_kinematic_tree(context):
             dict_tmp = context.scene.objects[parent.name]['sk_child_entity_list']
             dict_tmp[repr(len(dict_tmp.keys())+1)] = obj
 
-        # register actuators on the actuator list
+        # register lists of elements that don't get built by traversing the kinematic tree
         if obj.enum_sk_type == "joint" and obj.sk_is_actuator:
             print(f"append actuator {obj.name}")
             actuator_list.append(obj)
@@ -147,6 +148,29 @@ def export_setup_folders():
 
 def export_defaults(): # TODO
     pass
+
+def export_camera(context, cam, xml_model):
+    print(f"exporting camera from object {cam.name}")
+
+    xml_camera = SubElement(xml_model, 'camera')
+    xml_camera.set("name", cam.name) # use the object name - easier
+    xml_camera.set("mode", cam.sk_camera_mode)
+
+    if cam.sk_camera_mode == "targetbody" or cam.sk_camera_mode == "targetbodycom":
+        xml_camera.set("target", cam.sk_camera_target.name)
+
+    # find camera datablock name from the object name
+    # xml_camera.set("fovy", f"{bpy.data.cameras[cam.name].angle*180.0/pi:.2f}")
+    xml_camera.set("fovy", f"{cam.data.angle*180.0/pi:.2f}")
+
+    # pose information
+    tf = cam.sk_parent_entity.matrix_world.inverted_safe() @ cam.matrix_world
+    pos = repr(tf.translation[0]) + " " + repr(tf.translation[1]) + " " + repr(tf.translation[2])
+    q = tf.to_quaternion()
+    quat = repr(q[0]) + " " + repr(q[1]) + " " + repr(q[2]) + " " + repr(q[3])
+
+    xml_camera.set("pos", pos)
+    xml_camera.set("quat", quat)
 
 def export_sensors(context, xml):
     xml_sensor_list = SubElement(xml, "sensor")
@@ -352,6 +376,9 @@ def export_entity(context, obj, xml_model, body_is_root, xml_asset):
         for j, child in obj['sk_child_entity_list'].iteritems():
             export_entity(context, child, xml_entity, False, xml_asset)
 
+    elif obj.enum_sk_type == "camera":
+        export_camera(context, obj, xml_model)
+
     else:
         print(f"[ERROR] something has gone wrong exporting {obj.name}!")
         assert False, "Object type not recognized for MJCF export"
@@ -376,7 +403,7 @@ def export_tree(context):
     # explore the kinematic tree from root (selected object) down
     export_entity(context, root, xml_worldbody, True, xml_asset)
 
-    # TODO lights and cameras inside worldbody
+    # TODO lights inside worldbody
     xml_light_tmp = SubElement(xml_worldbody, "light")
     xml_light_tmp.set("directional", "true")
     xml_light_tmp.set("cutoff", "4")
@@ -613,6 +640,34 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
             row = layout.row()
             row.prop(obj, "sk_parent_entity", text="Parent Body")
 
+        if obj.enum_sk_type == "camera":
+            if obj.type != "CAMERA":
+                row = layout.row()
+                row.label(text="ERROR! You must represent cameras with camera-type objects.")
+
+            else:
+                row = layout.row()
+                row.prop(obj, "sk_camera_mode", text="Camera Mode")
+
+                camera_data = obj.data
+                if camera_data.sensor_fit != "VERTICAL":
+                    row = layout.row()
+                    row.label(text="Warning! Camera sensor fit is not set to vertical. FOV settings will be incorrect.")
+
+                    row = layout.row()
+                    row.prop(camera_data, "sensor_fit", text="Sensor Fit")
+
+                else:
+                    row = layout.row()
+                    row.prop(camera_data, "angle", text="Camera Vertical FOV")
+                    
+
+                row = layout.row()
+                row.prop(obj, "sk_parent_entity", text="Parent Body")
+
+                if obj.sk_camera_mode == "targetbody" or obj.sk_camera_mode == "targetbodycom":
+                    row = layout.row()
+                    row.prop(obj, "sk_camera_target", text="Target")
 
 enum_joint_type_options = [
     ('free', 'Free', '', 1),
@@ -633,7 +688,8 @@ enum_sk_type = [
     ('geom', 'geom', 'geom'),
     ('equality', 'equality', 'equality'),
     3*("site",),
-    3*("sensor",)
+    3*("sensor",),
+    3*("camera",)
     ]
 
 enum_geom_type_options = [
@@ -667,6 +723,14 @@ enum_equality_type = [
 enum_sensor_type = [
     3*("rangefinder",),
     # TODO many more types!!
+]
+
+enum_camera_mode = [
+    ("fixed","Fixed", "Translation and orientation fixed relative to parent."),
+    ("track","Track", "Position is at a constant offset from the parent in world coordinates, while the camera orientation is constant in world coordinates."),
+    ("trackcom", "Track CM", "Tracks center of mass of kinematic subtree. Position is at a constant offset from the parent in world coordinates, while the camera orientation is constant in world coordinates."),
+    ("targetbody", "Target Body", "Camera position is fixed in the parent body, while the camera orientation is adjusted so that it always points towards the targeted body."),
+    ("targetbodycom", "Target Body CM", "Tracks center of masss of kinematic subtree.Camera position is fixed in the parent body, while the camera orientation is adjusted so that it always points towards the targeted body. ")
 ]
 
 def register():
@@ -722,6 +786,10 @@ def register():
 
     # Sensors
     bpy.types.Object.sk_sensor_type = bpy.props.EnumProperty(items=enum_sensor_type)
+
+    # Camera
+    bpy.types.Object.sk_camera_mode = bpy.props.EnumProperty(items=enum_camera_mode)
+    bpy.types.Object.sk_camera_target = bpy.props.PointerProperty(type=bpy.types.Object, name="sk_camera_target", description="camera target", update=None)
 
     bpy.utils.register_class(MJCFExportOperator)
     bpy.utils.register_class(SimpleKinematicsJointPanel)
