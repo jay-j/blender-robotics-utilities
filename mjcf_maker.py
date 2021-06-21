@@ -39,7 +39,7 @@ def xml_pretty(elem):
 def export_pretty(context, xml_root):
     # make it user-readable and atually do the file export
     xml_pretty_string = xml_pretty(xml_root)
-    print(xml_pretty_string)
+    #print(xml_pretty_string)
     fd = open(bpy.path.abspath('//' + context.scene.robot_name + '.xml'), 'w')
     fd.write(xml_pretty_string)
     fd.close()
@@ -54,11 +54,13 @@ def export_pretty(context, xml_root):
 actuator_list = []
 equality_list = []
 sensor_list = []
+meshes_exported = []
 
 def build_kinematic_tree(context):
     actuator_list.clear()
     equality_list.clear()
     sensor_list.clear()
+    meshes_exported.clear()
     for obj in context.scene.objects:
         obj['sk_child_entity_list'] = {}
 
@@ -99,26 +101,42 @@ def build_kinematic_tree(context):
             sensor_list.append(obj)
 
 
-def export_stl(context, obj):
-    print(f"Exporting STL for object {obj.name}")
-    # store the active object so it can be restored later
-    sel_obj = bpy.context.view_layer.objects.active
+def export_stl(context, obj, xml_geom, xml_asset):  
 
-    # TODO find a way for collection instances to serve as single links
-    if obj.type != 'MESH':
-        print("ERROR object", obj.name, "is not a mesh object")
-        return
+    mesh_data_name = obj.data.name
+    if meshes_exported.count(mesh_data_name) == 0:
+        print(f"Exporting new STL mesh for object {obj.name}")
 
-    # select only the single mesh to be exported
-    bpy.ops.object.select_all(action='DESELECT')
-    obj.select_set(True)
+        # store the active object so it can be restored later
+        sel_obj = bpy.context.view_layer.objects.active
 
-    # CAUTION! the option use_global_frame requres modifying Blender D11517 (https://developer.blender.org/D11517)
-    bpy.ops.export_mesh.stl(filepath=bpy.path.abspath('//mesh_stl/' + obj.name + '.stl'), use_selection=True, use_global_frame=False, ascii=False)
+        # TODO find a way for collection instances to serve as single links
+        if obj.type != 'MESH':
+            print("ERROR object", obj.name, "is not a mesh object")
+            return
 
-    # restore selection
-    bpy.ops.object.select_all(action='DESELECT')
-    sel_obj.select_set(True)
+        # select only the single mesh to be exported
+        bpy.ops.object.select_all(action='DESELECT')
+        obj.select_set(True)
+
+        # CAUTION! the option use_global_frame requres modifying Blender D11517 (https://developer.blender.org/D11517)
+        bpy.ops.export_mesh.stl(filepath=bpy.path.abspath('//mesh_stl/' + mesh_data_name + '.stl'), use_selection=True, use_global_frame=False, ascii=False)
+
+        # restore selection
+        bpy.ops.object.select_all(action='DESELECT')
+        sel_obj.select_set(True)
+
+        # if new asset have to do this and run the export
+        xml_stl = SubElement(xml_asset, "mesh")
+        xml_stl.set("name", "mesh_" + mesh_data_name)
+        xml_stl.set("file", "mesh_stl/" + mesh_data_name + ".stl")
+
+        meshes_exported.append(mesh_data_name)
+    else:
+        print(f"Object {obj.name} using already exported mesh {mesh_data_name}")
+
+    # assign geometry to use the exported asset
+    xml_geom.set("mesh", "mesh_" + mesh_data_name)
 
 def export_options(xml_root): # TODO expose these in some sort of UI panel
     xml_compiler = SubElement(xml_root, "compiler")
@@ -265,12 +283,8 @@ def export_mesh_geom(context, obj, xml, xml_asset, visualization_only=False):
         xml_geom.set("mass", repr(obj.sk_mass))
         xml_geom.set("contype", repr(obj.sk_contype))
         xml_geom.set("conaffinity", repr(obj.sk_conaffinity))
-    xml_geom.set("mesh", "mesh_" + obj.name)
 
-    xml_stl = SubElement(xml_asset, "mesh")
-    xml_stl.set("name", "mesh_" + obj.name)
-    xml_stl.set("file", "mesh_stl/" + obj.name + ".stl")
-    export_stl(context, obj)
+    export_stl(context, obj, xml_geom, xml_asset)
 
 # exports xml data for a link entity
 def export_entity(context, obj, xml_model, body_is_root, xml_asset):
