@@ -156,7 +156,9 @@ def boilerplate(robot_name):
 ####################################################################################################################################
 # explores all objects in context.scene.objects to 
 # tells links which joints are DOWNSTREAM of them
+meshes_exported = []
 def build_kinematic_tree(context):
+    meshes_exported.clear()
     for obj in context.scene.objects:
         obj['sk_link_child_joints'] = {}
         obj['sk_link_parent_joint'] = None
@@ -206,8 +208,10 @@ def xml_origin_wrt_parent(context, obj, xml_entity):
     if obj['sk_link_parent_joint'] == None:
         pose_wrt_parent = obj.matrix_world
     else:
-        # pose_wrt_parent = obj['sk_link_parent_joint'].matrix_world.inverted() @ obj.matrix_world
-        pose_wrt_parent = obj['sk_link_parent_joint'].matrix_world.inverted() # different because we don't control STL origin...
+        if context.scene.local_meshes:
+           pose_wrt_parent = obj['sk_link_parent_joint'].matrix_world.inverted() @ obj.matrix_world
+        else:
+          pose_wrt_parent = obj['sk_link_parent_joint'].matrix_world.inverted() # different because we don't control STL origin... TODO
     
     pose_xyz = ''
     pose_xyz += repr(pose_wrt_parent.translation[0]) + " "
@@ -237,26 +241,39 @@ def export_link_inertial(context, obj, xml_link):
         xml_inertia.set(i, repr(inertia[i]))
 
 def export_stl(context, obj, xml_geometry):
-    # store the active object so it can be restored later
-    sel_obj = bpy.context.view_layer.objects.active
-    
-    # TODO find a way for collection instances to serve as single links
-    if obj.type != 'MESH':
-        print("ERROR object", obj.name, "is not a mesh object")
-        return
-    
-    # select only the single mesh to be exported
-    bpy.ops.object.select_all(action='DESELECT')
-    obj.select_set(True)
-    
-    bpy.ops.export_mesh.stl(filepath=bpy.path.abspath('//'+context.scene.robot_name+'/meshes/' + obj.name + '.stl'), use_selection=True)
-    
-    # restore selection
-    bpy.ops.object.select_all(action='DESELECT')
-    sel_obj.select_set(True)
+    mesh_data_name = obj.data.name
+
+    # if not using local_meshes option, then have to export a new object for sure
+    # if yes using local_meshes option, then only export if the mesh hasn't been exported yet
+    if not context.scene.local_meshes or meshes_exported.count(mesh_data_name) == 0:
+
+        # store the active object so it can be restored later
+        sel_obj = bpy.context.view_layer.objects.active
+        
+        # TODO find a way for collection instances to serve as single links
+        if obj.type != 'MESH':
+            print("ERROR object", obj.name, "is not a mesh object")
+            return
+        
+        # select only the single mesh to be exported
+        bpy.ops.object.select_all(action='DESELECT')
+        obj.select_set(True)
+        
+        if context.scene.local_meshes:
+            # CAUTION! the option use_global_frame requres modifying Blender D11517 (https://developer.blender.org/D11517)
+            bpy.ops.export_mesh.stl(filepath=bpy.path.abspath('//'+context.scene.robot_name+'/meshes/' + mesh_data_name + '.stl'), use_selection=True, use_global_frame=False)
+        else:
+            bpy.ops.export_mesh.stl(filepath=bpy.path.abspath('//'+context.scene.robot_name+'/meshes/' + obj.name + '.stl'), use_selection=True) # after D11517, this has a default argument use_global_frame=True so this line will still work
+        
+        # restore selection
+        bpy.ops.object.select_all(action='DESELECT')
+        sel_obj.select_set(True)
     
     xml_mesh = SubElement(xml_geometry, 'mesh')
-    xml_mesh.set('filename', 'package://'+ context.scene.robot_name + "/meshes/" + obj.name + '.stl')
+    if context.scene.local_meshes:
+        xml_mesh.set('filename', 'package://'+ context.scene.robot_name + "/meshes/" + mesh_data_name + '.stl')
+    else:
+        xml_mesh.set('filename', 'package://'+ context.scene.robot_name + "/meshes/" + obj.name + '.stl')
     
 
 def export_link_collision_stl(context, obj, xml_link):
@@ -278,11 +295,13 @@ def export_link_visual_stl(context, obj, xml_link):
     # get the pose
     xml_visual = SubElement(xml_link, 'visual')
 
-    # pose is different here because we don't control the STL origin so we need to compensate for that
     if obj['sk_link_parent_joint'] == None:
-        pose_wrt_parent = obj.matrix_world
+            pose_wrt_parent = obj.matrix_world
     else:
-        pose_wrt_parent = obj['sk_link_parent_joint'].matrix_world.inverted()
+        if context.scene.local_meshes:
+            pose_wrt_parent = obj['sk_link_parent_joint'].matrix_world.inverted() @ obj.matrix_world
+        else:
+            pose_wrt_parent = obj['sk_link_parent_joint'].matrix_world.inverted() # different because we don't control STL origin... TODO
     
     pose_xyz = ''
     pose_xyz += repr(pose_wrt_parent.translation[0]) + " "
@@ -640,6 +659,7 @@ def register():
     bpy.types.Object.sk_axis_z_upper_lin = bpy.props.FloatProperty(name="z_upper_lin", default=0, soft_min=-1, soft_max=1, unit="LENGTH", step=step_lin_ui)
     
     bpy.types.Scene.robot_name = bpy.props.StringProperty(name="robot_name", default="")
+    bpy.types.Scene.local_meshes = bpy.props.BoolProperty(name="local_meshes", default=False, description="Local coordinates and shared mesh files if you have https://developer.blender.org/D11517")
     
     bpy.utils.register_class(URDFExportOperator)
     bpy.utils.register_class(SimpleKinematicsJointPanel)
