@@ -211,7 +211,7 @@ def xml_origin_wrt_parent(context, obj, xml_entity):
         if context.scene.local_meshes:
            pose_wrt_parent = obj['sk_link_parent_joint'].matrix_world.inverted() @ obj.matrix_world
         else:
-          pose_wrt_parent = obj['sk_link_parent_joint'].matrix_world.inverted() # different because we don't control STL origin... TODO
+          pose_wrt_parent = obj['sk_link_parent_joint'].matrix_world.inverted()
     
     pose_xyz = ''
     pose_xyz += repr(pose_wrt_parent.translation[0]) + " "
@@ -301,7 +301,7 @@ def export_link_visual_stl(context, obj, xml_link):
         if context.scene.local_meshes:
             pose_wrt_parent = obj['sk_link_parent_joint'].matrix_world.inverted() @ obj.matrix_world
         else:
-            pose_wrt_parent = obj['sk_link_parent_joint'].matrix_world.inverted() # different because we don't control STL origin... TODO
+            pose_wrt_parent = obj['sk_link_parent_joint'].matrix_world.inverted()
     
     pose_xyz = ''
     pose_xyz += repr(pose_wrt_parent.translation[0]) + " "
@@ -683,4 +683,3 @@ def unregister():
 if __name__ == "__main__":
     register()
     print('register, successful')
-
