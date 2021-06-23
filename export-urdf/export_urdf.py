@@ -508,6 +508,9 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
         
         row = layout.row()
         row.prop(context.scene, "robot_name", text="Robot Name")
+
+        row = layout.row()
+        row.prop(context.scene, "local_meshes", text="Use local meshes (shared when possible)")
         
         row = layout.row()
         row.prop(obj, 'enum_sk_type', text='Type', expand=True)
@@ -675,6 +678,7 @@ def unregister():
     del bpy.types.Object.enum_sk_type
     del bpy.types.Object.sk_mass
     del bpy.types.Scene.robot_name
+    del bpy.types.Scene.local_meshes
 
 if __name__ == "__main__":
     register()
