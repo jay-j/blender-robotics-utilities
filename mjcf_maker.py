@@ -369,6 +369,14 @@ def export_entity(context, obj, xml_model, body_is_root, xml_asset):
                 else:
                     xml_entity.set("range", repr(obj.sk_axis_lower_rot) + " " + repr(obj.sk_axis_upper_rot))
 
+        if obj.sk_joint_friction:
+            xml_entity.set("frictionloss", repr(obj.sk_joint_frictionloss))
+
+            if obj.sk_joint_solreffriction_custom:
+                xml_entity.set("solreffriction", f"{obj.sk_joint_solreffriction[0]} {obj.sk_joint_solreffriction[1]}")
+            if obj.sk_joint_solimpfriction_custom:
+                xml_entity.set("solimpfriction", f"{obj.sk_joint_solimpfriction[0]} {obj.sk_joint_solimpfriction[1]} {obj.sk_joint_solimpfriction[2]}")
+
         for j, child in obj['sk_child_entity_list'].iteritems():
             export_entity(context, child, xml_model, False, xml_asset)
 
@@ -607,6 +615,24 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
             row.prop(obj, "sk_joint_damping", text="Damping")
 
             row = layout.row()
+            row.prop(obj, "sk_joint_friction", text="Dry Friction")
+            if obj.sk_joint_friction:
+                row = layout.row()
+                row.prop(obj, "sk_joint_frictionloss", text="frictionloss")
+
+                row = layout.row()
+                row.prop(obj, "sk_joint_solreffriction_custom", text="Custom Solver Parameter solref")
+                row = layout.row()
+                row.prop(obj, "sk_joint_solreffriction", text="solref")
+                row.active = obj.sk_joint_solreffriction_custom
+
+                row = layout.row()
+                row.prop(obj, "sk_joint_solimpfriction_custom", text="Custom Solver Parameter solimp")
+                row = layout.row()
+                row.prop(obj, "sk_joint_solimpfriction", text="solimp")
+                row.active = obj.sk_joint_solimpfriction_custom
+
+            row = layout.row()
             row.prop(obj, "sk_is_actuator")
 
             if obj.sk_is_actuator:
@@ -799,6 +825,13 @@ def register():
     bpy.types.Object.sk_joint_damping = bpy.props.FloatProperty(name="damping", default=0, soft_min=-1000, soft_max=1000, unit="NONE", step=step_lin_ui)
     bpy.types.Object.sk_joint_springref_lin = bpy.props.FloatProperty(name="springref_lin", default=0, soft_min=-1, soft_max=1, unit="LENGTH", step=step_lin_ui)
     bpy.types.Object.sk_joint_springref_rot = bpy.props.FloatProperty(name="springref_rot", default=0, soft_min=-1, soft_max=1, unit="ROTATION", step=step_angle_ui)
+
+    bpy.types.Object.sk_joint_friction = bpy.props.BoolProperty(name="sk_friction", default=False)
+    bpy.types.Object.sk_joint_frictionloss = bpy.props.FloatProperty(name="sk_frictionloss", default=0)
+    bpy.types.Object.sk_joint_solreffriction = bpy.props.FloatVectorProperty(name="sk_solreffriction", size=2, default=[0.0005, 1], precision=4, description="(timeconst, dampratio). Should keep [time constant] > 2*[simulation stpe time]")
+    bpy.types.Object.sk_joint_solreffriction_custom = bpy.props.BoolProperty(name="sk_solreffriction_custom", default=False)
+    bpy.types.Object.sk_joint_solimpfriction = bpy.props.FloatVectorProperty(name="sk_solimpfriction", size=3, default=[2, 1.2, 0.001], precision=4)
+    bpy.types.Object.sk_joint_solimpfriction_custom = bpy.props.BoolProperty(name="sk_solimpfriction_custom", default=False)
     #TODO armature reflected inertia parameter
 
     # Actuator Properties
@@ -845,4 +878,3 @@ def unregister():
 if __name__ == "__main__":
     register()
     print('register, successful')
-
