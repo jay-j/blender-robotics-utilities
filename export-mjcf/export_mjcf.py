@@ -100,7 +100,6 @@ def build_kinematic_tree(context):
             print(f"append sensor {obj.name}")
             sensor_list.append(obj)
 
-
 def export_stl(context, obj, xml_geom, xml_asset):  
 
     mesh_data_name = obj.data.name
@@ -219,6 +218,18 @@ def export_actuators(context, xml):
 
         if act.sk_actuator_type == "position":
             xml_act.set("kp", repr(act.sk_actuator_kp))
+
+        if act.sk_actuator_type == "cascade_pid":
+            xml_act.set("gaintype","user")
+            xml_act.set("biastype","user")
+            xml_act.set("user","1")
+            gain_string = ''.join(repr(x) + " " for x in act.sk_actuator_pid)
+            xml_act.set("gainprm", gain_string)
+
+            # also need to set some global parameters to support this
+            xml_size = xml.findall("size")
+            xml_size[0].set("nuserdata", "100") # TODO why a constant?
+            xml_size[0].set("nuser_actuator", "1")
 
 def export_equalities(context, xml):
     xml_equality_list = SubElement(xml, "equality")
@@ -376,6 +387,9 @@ def export_entity(context, obj, xml_model, body_is_root, xml_asset):
                 xml_entity.set("solreffriction", f"{obj.sk_joint_solreffriction[0]} {obj.sk_joint_solreffriction[1]}")
             if obj.sk_joint_solimpfriction_custom:
                 xml_entity.set("solimpfriction", f"{obj.sk_joint_solimpfriction[0]} {obj.sk_joint_solimpfriction[1]} {obj.sk_joint_solimpfriction[2]}")
+
+        if obj.sk_joint_armature != 0:
+            xml_entity.set("armature", repr(obj.sk_joint_armature))
 
         for j, child in obj['sk_child_entity_list'].iteritems():
             export_entity(context, child, xml_model, False, xml_asset)
@@ -592,7 +606,7 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
                 row.prop(obj, 'enum_joint_axis', text='Axis')
 
                 row = layout.row()
-                row.prop(obj, 'sk_axis_limit', text='limit')
+                row.prop(obj, 'sk_axis_limit', text='Limit Position')
 
                 if obj.sk_axis_limit:
                     if obj.enum_joint_type == 'slide':
@@ -604,9 +618,9 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
                     else:
                         row.prop(obj, 'sk_axis_upper_rot', text='upper limit')
 
-            row = layout.row()
-            row.label(text="Passive Properties")
-            row = layout.row()
+            box = layout.box()
+            box.label(text="Passive Properties")
+            row = box.row()
             row.prop(obj, "sk_joint_stiffness", text="Stiffness")
             if obj.enum_joint_type == "slide":
                 row.prop(obj, "sk_joint_springref_lin", text="Position at Zero Spring Force")
@@ -614,31 +628,31 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
                 row.prop(obj, "sk_joint_springref_rot", text="Position at Zero Spring Force")
             row.prop(obj, "sk_joint_damping", text="Damping")
 
-            row = layout.row()
+            row = box.row()
+            row.prop(obj, "sk_joint_armature", text="Reflected Inertia (kg.m^2)")
+
+            row = box.row()
             row.prop(obj, "sk_joint_friction", text="Dry Friction")
             if obj.sk_joint_friction:
-                row = layout.row()
+                row = box.row()
                 row.prop(obj, "sk_joint_frictionloss", text="frictionloss")
 
-                row = layout.row()
+                row = box.row()
                 row.prop(obj, "sk_joint_solreffriction_custom", text="Custom Solver Parameter solref")
-                row = layout.row()
+                row = box.row()
                 row.prop(obj, "sk_joint_solreffriction", text="solref")
                 row.active = obj.sk_joint_solreffriction_custom
 
-                row = layout.row()
+                row = box.row()
                 row.prop(obj, "sk_joint_solimpfriction_custom", text="Custom Solver Parameter solimp")
-                row = layout.row()
+                row = box.row()
                 row.prop(obj, "sk_joint_solimpfriction", text="solimp")
                 row.active = obj.sk_joint_solimpfriction_custom
 
             row = layout.row()
-            row.prop(obj, "sk_is_actuator")
+            row.prop(obj, "sk_is_actuator", text="Actuator")
 
             if obj.sk_is_actuator:
-                row = layout.row()
-                row.prop(obj, "sk_actuator_type", text="Actuator Type")
-
                 row = layout.row()
                 row.prop(obj, "sk_actuator_ctrllimited", text="Limit Command")
                 if obj.sk_actuator_ctrllimited:
@@ -651,6 +665,9 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
                     row.prop(obj, "sk_actuator_forcelimit_lower", text="lower")
                     row.prop(obj, "sk_actuator_forcelimit_upper", text="upper")
 
+                row = layout.row()
+                row.prop(obj, "sk_actuator_type", text="Actuator Type")
+
                 if obj.sk_actuator_type == "velocity":
                     row = layout.row()
                     row.prop(obj, "sk_actuator_kv", text="velocity feedback gain kv")
@@ -658,6 +675,27 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
                 if obj.sk_actuator_type == "position":
                     row = layout.row()
                     row.prop(obj, "sk_actuator_kp", text="position feedback gain kp")
+
+                if obj.sk_actuator_type == "cascade_pid":
+                    row = layout.row()
+                    row.label(text="run mj.cymj.set_pid_control(sim.model, sim.data) to finish setup")
+
+                    box = layout.box()
+                    box.label(text="Position Loop Parameters")
+
+                    box.prop(obj, "sk_actuator_pid", text="Proportional Gain (kp_pos)", index=0)
+                    box.prop(obj, "sk_actuator_pid", text="Integral Gain (Ti_pos)", index=1)
+                    box.prop(obj, "sk_actuator_pid", text="Integral Error Clamp (Ti_max_pos)", index=2)
+                    box.prop(obj, "sk_actuator_pid", text="Derivative Gain (Td_pos)", index=3)
+                    box.prop(obj, "sk_actuator_pid", text="Derivative Smoothing EMA (Td_smooth_pos)", index=3)
+
+                    box = layout.box()
+                    box.label(text="Velocity Loop Parameters")
+                    box.prop(obj, "sk_actuator_pid", text="Proportional Gain (kp_vel)", index=4)
+                    box.prop(obj, "sk_actuator_pid", text="Integral Gain (Ti_vel)", index=5)
+                    box.prop(obj, "sk_actuator_pid", text="Integral Error Clamp (Ti_max_vel)", index=6)
+                    box.prop(obj, "sk_actuator_pid", text="Position Target Smoothing (ema_smooth_factor)", index=7)
+                    box.prop(obj, "sk_actuator_pid", text="Speed Limit Clamp (max_vel)", index=8)
 
         if obj.enum_sk_type == "equality":
             row = layout.row()
@@ -768,7 +806,8 @@ enum_actuator_type = [
     3*('position',),
     3*('velocity',),
     3*('cylinder',), # TODO pneumatic or hydraulics
-    3*('muscle',) # TODO
+    3*('muscle',), # TODO
+    ('cascade_pid','cascade_pid',"Generic set of cascaded control loops, with many parameter options")
 ]
 
 enum_equality_type = [
@@ -832,7 +871,7 @@ def register():
     bpy.types.Object.sk_joint_solreffriction_custom = bpy.props.BoolProperty(name="sk_solreffriction_custom", default=False)
     bpy.types.Object.sk_joint_solimpfriction = bpy.props.FloatVectorProperty(name="sk_solimpfriction", size=3, default=[2, 1.2, 0.001], precision=4)
     bpy.types.Object.sk_joint_solimpfriction_custom = bpy.props.BoolProperty(name="sk_solimpfriction_custom", default=False)
-    #TODO armature reflected inertia parameter
+    bpy.types.Object.sk_joint_armature = bpy.props.FloatProperty(name="sk_joint_armature", default=0, precision=6, description="Armature inertia (or rotor inertia, or reflected inertia) of all degrees of freedom created by this joint.")
 
     # Actuator Properties
     bpy.types.Object.sk_is_actuator = bpy.props.BoolProperty(name="is_actuator", default=False)
@@ -845,6 +884,7 @@ def register():
     bpy.types.Object.sk_actuator_forcelimit_lower = bpy.props.FloatProperty(name="forcelimit_lower", default=0, soft_min=-50, soft_max=50, unit="NONE", step=step_angle_ui)
     bpy.types.Object.sk_actuator_kv = bpy.props.FloatProperty(name="actuator_kv", default=1, soft_min=0, soft_max=10, unit="NONE")
     bpy.types.Object.sk_actuator_kp = bpy.props.FloatProperty(name="actuator_kp", default=1, soft_min=0, soft_max=100, unit="NONE")
+    bpy.types.Object.sk_actuator_pid = bpy.props.FloatVectorProperty(name="actuator_pid", size=10)
 
     # Equality Constraint Properties
     bpy.types.Object.sk_equality_type = bpy.props.EnumProperty(items=enum_equality_type)
@@ -869,11 +909,13 @@ def unregister():
     del bpy.types.Scene.robot_name
     del bpy.types.Object.enum_joint_type
     del bpy.types.Object.enum_joint_axis
+    del bpy.types.Object.sk_joint_armature
     del bpy.types.Object.sk_parent_entity
     del bpy.types.Object.sk_child_entity
     del bpy.types.Object.enum_sk_type
     del bpy.types.Object.sk_mass
     del bpy.types.Object.sk_is_actuator
+    del bpy.types.Object.sk_actuator_pid
 
 if __name__ == "__main__":
     register()
