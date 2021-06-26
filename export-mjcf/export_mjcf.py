@@ -220,16 +220,17 @@ def export_actuators(context, xml):
             xml_act.set("kp", repr(act.sk_actuator_kp))
 
         if act.sk_actuator_type == "cascade_pid":
+            xml_act.tag = "general"
             xml_act.set("gaintype","user")
             xml_act.set("biastype","user")
             xml_act.set("user","1")
             gain_string = ''.join(repr(x) + " " for x in act.sk_actuator_pid)
             xml_act.set("gainprm", gain_string)
 
-            # also need to set some global parameters to support this
+            # also need to set some global parameters in the size area to support this
             xml_size = xml.findall("size")
             xml_size[0].set("nuserdata", "100") # TODO why a constant?
-            xml_size[0].set("nuser_actuator", "1")
+            xml_size[0].set("nuser_actuator", "10") # TODO one? ten? huh?
 
 def export_equalities(context, xml):
     xml_equality_list = SubElement(xml, "equality")
@@ -687,15 +688,15 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
                     box.prop(obj, "sk_actuator_pid", text="Integral Gain (Ti_pos)", index=1)
                     box.prop(obj, "sk_actuator_pid", text="Integral Error Clamp (Ti_max_pos)", index=2)
                     box.prop(obj, "sk_actuator_pid", text="Derivative Gain (Td_pos)", index=3)
-                    box.prop(obj, "sk_actuator_pid", text="Derivative Smoothing EMA (Td_smooth_pos)", index=3)
+                    box.prop(obj, "sk_actuator_pid", text="Derivative Smoothing EMA (Td_smooth_pos)", index=4)
 
                     box = layout.box()
                     box.label(text="Velocity Loop Parameters")
-                    box.prop(obj, "sk_actuator_pid", text="Proportional Gain (kp_vel)", index=4)
-                    box.prop(obj, "sk_actuator_pid", text="Integral Gain (Ti_vel)", index=5)
-                    box.prop(obj, "sk_actuator_pid", text="Integral Error Clamp (Ti_max_vel)", index=6)
-                    box.prop(obj, "sk_actuator_pid", text="Position Target Smoothing (ema_smooth_factor)", index=7)
-                    box.prop(obj, "sk_actuator_pid", text="Speed Limit Clamp (max_vel)", index=8)
+                    box.prop(obj, "sk_actuator_pid", text="Proportional Gain (kp_vel)", index=5)
+                    box.prop(obj, "sk_actuator_pid", text="Integral Gain (Ti_vel)", index=6)
+                    box.prop(obj, "sk_actuator_pid", text="Integral Error Clamp (Ti_max_vel)", index=7)
+                    box.prop(obj, "sk_actuator_pid", text="Position Target Smoothing (ema_smooth_factor)", index=8)
+                    box.prop(obj, "sk_actuator_pid", text="Speed Limit Clamp (max_vel)", index=9)
 
         if obj.enum_sk_type == "equality":
             row = layout.row()
