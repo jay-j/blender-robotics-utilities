@@ -223,14 +223,14 @@ def export_actuators(context, xml):
             xml_act.tag = "general"
             xml_act.set("gaintype","user")
             xml_act.set("biastype","user")
-            xml_act.set("user","1")
+            xml_act.set("user","1") # for the mujoco_py cascaded loop... 
             gain_string = ''.join(repr(x) + " " for x in act.sk_actuator_pid)
             xml_act.set("gainprm", gain_string)
 
             # also need to set some global parameters in the size area to support this
             xml_size = xml.findall("size")
-            xml_size[0].set("nuserdata", "100") # TODO why a constant?
-            xml_size[0].set("nuser_actuator", "10") # TODO one? ten? huh?
+            xml_size[0].set("nuserdata", "100") # this is a buffer for internal states, which are 5*num_actuators TODO smarter way to add these
+            xml_size[0].set("nuser_actuator", "10") # 10 static properties (gains) per actuator
 
 def export_equalities(context, xml):
     xml_equality_list = SubElement(xml, "equality")
@@ -821,6 +821,8 @@ enum_equality_type = [
 
 enum_sensor_type = [
     3*("rangefinder",),
+    3*("force",),
+    3*("torque",)
     # TODO many more types!!
 ]
 
