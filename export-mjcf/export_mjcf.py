@@ -287,6 +287,8 @@ def export_mesh_geom(context, obj, xml, xml_asset, visualization_only=False):
     xml_geom.set("type", "mesh")
     xml_geom.set("pos", "0 0 0")
     xml_geom.set("quat", "1 0 0 0")
+    rgba_string = repr(obj.color[0]) + " " + repr(obj.color[1]) + " " + repr(obj.color[2]) + " " + repr(obj.color[3])
+    xml_geom.set("rgba", rgba_string)
     if visualization_only:
         xml_geom.set("mass", "0")
         xml_geom.set("contype", "0")
