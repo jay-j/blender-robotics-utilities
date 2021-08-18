@@ -686,6 +686,7 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
                     box = layout.box()
                     box.label(text="Position Loop Parameters")
 
+                    box.prop(obj, "sk_actuator_pid", text="Position Target Smoothing (ema_smooth_factor)", index=8)
                     box.prop(obj, "sk_actuator_pid", text="Proportional Gain (kp_pos)", index=0)
                     box.prop(obj, "sk_actuator_pid", text="Integral Gain (Ti_pos)", index=1)
                     box.prop(obj, "sk_actuator_pid", text="Integral Error Clamp (Ti_max_pos)", index=2)
@@ -694,11 +695,10 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
 
                     box = layout.box()
                     box.label(text="Velocity Loop Parameters")
+                    box.prop(obj, "sk_actuator_pid", text="Speed Limit Clamp (max_vel)", index=9)
                     box.prop(obj, "sk_actuator_pid", text="Proportional Gain (kp_vel)", index=5)
                     box.prop(obj, "sk_actuator_pid", text="Integral Gain (Ti_vel)", index=6)
                     box.prop(obj, "sk_actuator_pid", text="Integral Error Clamp (Ti_max_vel)", index=7)
-                    box.prop(obj, "sk_actuator_pid", text="Position Target Smoothing (ema_smooth_factor)", index=8)
-                    box.prop(obj, "sk_actuator_pid", text="Speed Limit Clamp (max_vel)", index=9)
 
         if obj.enum_sk_type == "equality":
             row = layout.row()
