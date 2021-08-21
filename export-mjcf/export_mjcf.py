@@ -476,7 +476,14 @@ class MJCFExportOperator(bpy.types.Operator):
         )
 
     def execute(self, context):
-        print('Export action called, root object=', context.object)
+        root = context.object
+        print('Export action called, root object=', root)
+
+        if not (root.location[0] == 0 and root.location[1] == 0 and root.location[2] == 0):
+            print("[WARNING] root object is not located at world origin.")
+            self.report({'WARNING'}, 'Root object origin is not located at world origin. Transformations of objects attached to the world will be incorrect.')
+
+
         build_kinematic_tree(context)
         export_tree(context)
         print('export, successful')
