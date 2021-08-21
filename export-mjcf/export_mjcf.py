@@ -889,7 +889,7 @@ def register():
     bpy.types.Object.sk_actuator_forcelimit_lower = bpy.props.FloatProperty(name="forcelimit_lower", default=0, soft_min=-50, soft_max=50, unit="NONE", step=step_angle_ui)
     bpy.types.Object.sk_actuator_kv = bpy.props.FloatProperty(name="actuator_kv", default=1, soft_min=0, soft_max=10, unit="NONE")
     bpy.types.Object.sk_actuator_kp = bpy.props.FloatProperty(name="actuator_kp", default=1, soft_min=0, soft_max=100, unit="NONE")
-    bpy.types.Object.sk_actuator_pid = bpy.props.FloatVectorProperty(name="actuator_pid", size=10)
+    bpy.types.Object.sk_actuator_pid = bpy.props.FloatVectorProperty(name="actuator_pid", size=10, default=[0.0, 0.0, 1.0, 0.0, 0.5, 0.0, 0.0, 1.0, 0.5, 1.0])
 
     # Equality Constraint Properties
     bpy.types.Object.sk_equality_type = bpy.props.EnumProperty(items=enum_equality_type)
