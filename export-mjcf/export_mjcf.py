@@ -429,8 +429,7 @@ def export_entity(context, obj, xml_model, body_is_root, xml_asset):
         assert False, "Object type not recognized for MJCF export"
 
 # follows an already-explored tree to add links and joints to the xml data
-def export_tree(context):
-    root = context.object
+def export_tree(context, root):
     export_start_time = time.time()
 
     export_setup_folders()
@@ -474,9 +473,16 @@ class MJCFExportOperator(bpy.types.Operator):
     action: bpy.props.EnumProperty(
         items=[('MJCF', 'mjcf', 'mjcf')]
         )
+    use_selected_object: bpy.props.BoolProperty(
+        name = "use_selected_object",
+        default = True
+    )
 
     def execute(self, context):
-        root = context.object
+        if self.use_selected_object:
+            root = context.object
+        else:
+            root = context.scene.root_previous
         print('Export action called, root object=', root)
 
         if not (root.location[0] == 0 and root.location[1] == 0 and root.location[2] == 0):
@@ -485,8 +491,11 @@ class MJCFExportOperator(bpy.types.Operator):
 
 
         build_kinematic_tree(context)
-        export_tree(context)
+        export_tree(context, root)
         print('export, successful')
+
+        # store this root object for quick repeat of the export action in the future
+        context.scene.root_previous = root
 
         return {'FINISHED'}
 
@@ -542,7 +551,9 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
             row.prop(context.scene, "robot_name", text="Robot Name")
 
             row = layout.row()
-            row.operator('sk.export_mjcf', text="Export using this object as root").action = 'MJCF'
+            export_button = row.operator('sk.export_mjcf', text="Export using this object as root")
+            export_button.action = 'MJCF'
+            export_button.use_selected_object=True
 
         row = layout.row()
         row.prop(obj, 'enum_sk_type', text='Type', expand=True)
@@ -776,6 +787,32 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
                     row = layout.row()
                     row.prop(obj, "sk_camera_target", text="Target")
 
+class SimpleKinematicsGlobalPanel(bpy.types.Panel):
+    bl_idname = "OBJECT_PT_sk_global"
+    bl_label = "Simple Kinematics"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "Export"
+
+    def draw(self, context):
+        layout = self.layout
+
+        if context.scene.root_previous is not None:
+            box = layout.box()
+            box.label(text="Repeat Export")
+            box.label(text=f"Previous Root: {context.scene.root_previous.name}")
+
+            export_button = box.operator("sk.export_mjcf", text="Export Again")
+            export_button.action = 'MJCF'
+            export_button.use_selected_object=False
+
+        box = layout.box()
+        box.label(text="This Object")
+        box.label(text=f"Type: {context.object.enum_sk_type}")
+        box.prop(context.object, "rotation_euler")
+        box.prop(context.object, "scale")
+
+
 enum_joint_type_options = [
     ('free', 'Free', '', 1),
     ('ball', 'Ball', '', 2),
@@ -850,6 +887,7 @@ def register():
 
     # General Properties
     bpy.types.Scene.robot_name = bpy.props.StringProperty(name="robot_name", default="")
+    bpy.types.Scene.root_previous =bpy.props.PointerProperty(type=bpy.types.Object, name="root_previous", description="Last-used root export object", update=None)
     bpy.types.Object.enum_sk_type = bpy.props.EnumProperty(items=enum_sk_type)
     bpy.types.Object.sk_parent_entity = bpy.props.PointerProperty(type=bpy.types.Object, name="sk_parent_entity", description="Simple Kinematics Parent Entity", update=None)
     bpy.types.Object.sk_solref = bpy.props.FloatVectorProperty(name="sk_solref", size=2, default=[0.0005, 1], precision=4, description="(timeconst, dampratio). Should keep [time constant] > 2*[simulation stpe time]")
@@ -912,12 +950,15 @@ def register():
     bpy.types.Object.sk_camera_mode = bpy.props.EnumProperty(items=enum_camera_mode)
     bpy.types.Object.sk_camera_target = bpy.props.PointerProperty(type=bpy.types.Object, name="sk_camera_target", description="camera target", update=None)
 
+    # Add the user interface elements
     bpy.utils.register_class(MJCFExportOperator)
     bpy.utils.register_class(SimpleKinematicsJointPanel)
+    bpy.utils.register_class(SimpleKinematicsGlobalPanel)
 
 def unregister():
     bpy.utils.unregister_class(MJCFExportOperator)
     bpy.utils.unregister_class(SimpleKinematicsJointPanel)
+    bpy.utils.unregister_class(SimpleKinematicsGlobalPanel)
     del bpy.types.Scene.robot_name
     del bpy.types.Object.enum_joint_type
     del bpy.types.Object.enum_joint_axis
