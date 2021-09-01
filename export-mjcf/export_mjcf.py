@@ -325,9 +325,12 @@ def export_entity(context, obj, xml_model, body_is_root, xml_asset):
         xml_entity.set("rgba", "0.5 0.5 0.5 0.1")
         xml_entity.set("contype", repr(obj.sk_contype))
         xml_entity.set("conaffinity", repr(obj.sk_conaffinity))
-        #xml_entity.set("solref", "0.005, 1")
         #TODO rgba - color from parent body material first index
         #TODO friction
+        if obj.sk_solref_custom:
+            xml_entity.set("solref", f"{obj.sk_solref[0]} {obj.sk_solref[1]}")
+        if obj.sk_solimp_custom:
+            xml_entity.set("solimp", f"{obj.sk_solimp[0]} {obj.sk_solimp[1]} {obj.sk_solimp[2]}")
 
     elif obj.enum_sk_type == "site":
         print(f"Exporting {obj.name} as SITE")
@@ -608,6 +611,18 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
                     size = calculate_geom_size(obj)
                     row = layout.row()
                     row.label(text=f"raw size array: {size}")
+
+                row = layout.row()
+                row.prop(obj, "sk_solref_custom", text="Custom Contact Solver Parameter solref")
+                row = layout.row()
+                row.prop(obj, "sk_solref", text="solref")
+                row.active = obj.sk_solref_custom
+
+                row = layout.row()
+                row.prop(obj, "sk_solimp_custom", text="Custom Contact Solver Parameter solimp")
+                row = layout.row()
+                row.prop(obj, "sk_solimp", text="solimp")
+                row.active = obj.sk_solimp_custom
 
         if obj.enum_sk_type == 'joint':
 
