@@ -522,7 +522,7 @@ def calculate_geom_size(obj):
 
     if obj.sk_geom_type == "cylinder":
         # radius; length
-        size = [abs(obj.scale[1]), abs(obj.scale[0])]
+        size = [abs(obj.scale[1]), abs(obj.scale[2])]
 
     if obj.sk_geom_type == "box":
         # x y z
