@@ -51,7 +51,7 @@ def boilerplate_config(robot_name):
     # create this joint name thing
     working_dir = bpy.path.abspath("//")
     path = os.path.join(working_dir, robot_name + "/config/joint_names_" + robot_name + ".yaml")
-    fd = open(path, 'w')
+    fd = open(path, 'w', newline='\n')
     fd.write("controller_joint_names: ['', ]")
     fd.close()
 
@@ -96,7 +96,7 @@ def boilerplate_launch(robot_name):
     xml_rviz.set("args", "-d $(find " + robot_name + ")/urdf.rviz")
     
     xml_pretty_string = xml_pretty(xml_display)
-    fd = open(bpy.path.abspath('//'+robot_name+'/launch/display.launch'), 'w')
+    fd = open(bpy.path.abspath('//'+robot_name+'/launch/display.launch'), 'w', newline='\n')
     fd.write(xml_pretty_string)
     fd.close()
 
@@ -126,17 +126,17 @@ def boilerplate_launch(robot_name):
     xml_topic.set("args", "pub /calibrated std_msgs/Bool true")
     
     xml_pretty_string = xml_pretty(xml_gazebo)
-    fd = open(bpy.path.abspath('//'+robot_name+'/launch/gazebo.launch'), 'w')
+    fd = open(bpy.path.abspath('//'+robot_name+'/launch/gazebo.launch'), 'w', newline='\n')
     fd.write(xml_pretty_string)
     fd.close()
 
 def boilerplate_cmake(robot_name):
-    fd = open(bpy.path.abspath("//"+robot_name+"/CMakeLists.txt"), "w")
+    fd = open(bpy.path.abspath("//"+robot_name+"/CMakeLists.txt"), "w", newline='\n')
     fd.write("cmake_minimum_required(VERSION 2.8.3)\nproject(" + robot_name +")\nfind_package(catkin REQUIRED)\ncatkin_package()\nfind_package(roslaunch)\nforeach(dir config launch meshes urdf)\n\tinstall(DIRECTORY ${dir}/\n\t\tDESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/${dir})\nendforeach(dir)")
     fd.close()
 
 def boilerplate_package(robot_name):
-    fd = open(bpy.path.abspath("//"+robot_name+"/package.xml"), "w")
+    fd = open(bpy.path.abspath("//"+robot_name+"/package.xml"), "w", newline='\n')
     fd.write("<package format=\"2\">\n<name>"+robot_name+"</name>\n<version>1.0.0</version>\n<description>\n<p>URDF Description package for "+robot_name+"</p>\n<p>This package contains configuration data, 3D models and launch files for " + robot_name + " robot</p>\n</description>\n <author>TODO</author>\n<maintainer email=\"TODO@email.com\" />\n<license>BSD</license>\n<buildtool_depend>catkin</buildtool_depend>\n<depend>roslaunch</depend>\n<depend>robot_state_publisher</depend>\n<depend>rviz</depend>\n<depend>joint_state_publisher</depend>\n<depend>gazebo</depend>\n<export>\n<architecture_independent />\n</export>\n</package>")
     fd.close()
 
@@ -459,7 +459,7 @@ def export_tree(context):
                 joint.sk_joint_child['sk_link_parent_joint'] = joint
                 
     xml_pretty_string = xml_pretty(xml_root)
-    fd = open(bpy.path.abspath("//"+context.scene.robot_name+"/urdf/" + context.scene.robot_name + ".urdf"), "w")
+    fd = open(bpy.path.abspath("//"+context.scene.robot_name+"/urdf/" + context.scene.robot_name + ".urdf"), "w", newline='\n')
     fd.write(xml_pretty_string)
     fd.close()
     

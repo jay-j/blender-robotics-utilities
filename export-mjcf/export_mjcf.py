@@ -40,7 +40,7 @@ def export_pretty(context, xml_root):
     # make it user-readable and atually do the file export
     xml_pretty_string = xml_pretty(xml_root)
     #print(xml_pretty_string)
-    fd = open(bpy.path.abspath('//' + context.scene.robot_name + '.xml'), 'w')
+    fd = open(bpy.path.abspath('//' + context.scene.robot_name + '.xml'), 'w', newline='\n')
     fd.write(xml_pretty_string)
     fd.close()
 

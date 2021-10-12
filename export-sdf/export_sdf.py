@@ -301,8 +301,8 @@ def export_tree(context):
                 
     xml_pretty_string = xml_pretty(xml_root)
     print(xml_pretty_string)
-    fd = open(bpy.path.abspath('//rover.sdf'), 'w')
-    #fd = open(bpy.path.abspath('//robot_' + root.name + '.sdf'), 'w')
+    fd = open(bpy.path.abspath('//rover.sdf'), 'w', newline='\n')
+    #fd = open(bpy.path.abspath('//robot_' + root.name + '.sdf'), 'w', newline='\n')
     fd.write(xml_pretty_string)
     fd.close()
     
