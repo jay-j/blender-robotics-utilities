@@ -134,6 +134,10 @@ def export_stl(context, obj, xml_geom, xml_asset):
     else:
         print(f"Object {obj.name} using already exported mesh {mesh_data_name}")
 
+        # check if a different mesh with the same name (e.g. from a linked file) is present and COULD be a problem TODO the right way to check???
+        # if bpy.data.meshes.keys().count(mesh_data_name) > 1:
+        #     assert False, f"[ERROR] file has more than one mesh named {mesh_data_name}, being conservative and terminating"
+
     # assign geometry to use the exported asset
     xml_geom.set("mesh", "mesh_" + mesh_data_name)
 
@@ -771,8 +775,14 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
             row = layout.row()
             row.prop(obj, "sk_sensor_type", text="Sensor Type")
 
-            row = layout.row()
-            row.prop(obj, "sk_parent_entity", text="Parent Body")
+            if obj.sk_sensor_type == 'force' or obj.sk_sensor_type == 'torque':
+                row = layout.row()
+                row.label(text="Measure force or torque between target object and its parent")
+                row = layout.row()
+                row.prop(obj, "sk_parent_entity", text="Target Body")
+            else:
+                row = layout.row()
+                row.prop(obj, "sk_parent_entity", text="Parent Body")
 
         if obj.enum_sk_type == "camera":
             if obj.type != "CAMERA":
