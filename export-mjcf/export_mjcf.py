@@ -68,7 +68,7 @@ def build_kinematic_tree(context):
         obj['sk_child_entity_list'] = {}
 
     for obj in context.scene.objects:
-        if (["body", "joint", "geom", "site", "camera"].count(obj.enum_sk_type) > 0 ) and not( obj.sk_parent_entity == None):
+        if (["body", "joint", "geom", "site", "camera", "sensor"].count(obj.enum_sk_type) > 0 ) and not( obj.sk_parent_entity == None):
 
             parent = obj.sk_parent_entity
             if obj.enum_sk_type == "body":
@@ -208,7 +208,7 @@ def export_sensors(context, xml):
         # TODO rangefinder hack
         xml_sen = SubElement(xml_sensor_list, sen.sk_sensor_type)
         xml_sen.set("name", "sensor_"+sen.name)
-        xml_sen.set("site", sen.sk_parent_entity.name)
+        xml_sen.set("site", sen.name)
 
 
 def export_actuators(context, xml):
@@ -346,7 +346,7 @@ def export_entity(context, obj, xml_model, body_is_root, xml_asset):
         if obj.sk_solimp_custom:
             xml_entity.set("solimp", f"{obj.sk_solimp[0]} {obj.sk_solimp[1]} {obj.sk_solimp[2]}")
 
-    elif obj.enum_sk_type == "site":
+    elif obj.enum_sk_type == "site" or obj.enum_sk_type == "sensor":
         print(f"Exporting {obj.name} as SITE")
         xml_entity = SubElement(xml_model, "site")
         xml_entity.set("name", obj.name)
