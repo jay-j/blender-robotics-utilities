@@ -55,17 +55,20 @@ actuator_list = []
 equality_list = []
 sensor_list = []
 meshes_exported = []
+nuserdata_estimate = 0
 
 def build_kinematic_tree(context):
     actuator_list.clear()
     equality_list.clear()
     sensor_list.clear()
     meshes_exported.clear()
+    global nuserdata_estimate
+    nuserdata_estimate = 0
     for obj in context.scene.objects:
         obj['sk_child_entity_list'] = {}
 
     for obj in context.scene.objects:
-        if (["body", "joint", "geom", "site", "camera"].count(obj.enum_sk_type) > 0 ) and not( obj.sk_parent_entity == None):
+        if (["body", "joint", "geom", "site", "camera", "sensor"].count(obj.enum_sk_type) > 0 ) and not( obj.sk_parent_entity == None):
 
             parent = obj.sk_parent_entity
             if obj.enum_sk_type == "body":
@@ -91,6 +94,7 @@ def build_kinematic_tree(context):
         if obj.enum_sk_type == "joint" and obj.sk_is_actuator:
             print(f"append actuator {obj.name}")
             actuator_list.append(obj)
+            nuserdata_estimate += 5
 
         if obj.enum_sk_type == "equality":
             print(f"append equality {obj.name}")
@@ -134,28 +138,38 @@ def export_stl(context, obj, xml_geom, xml_asset):
     else:
         print(f"Object {obj.name} using already exported mesh {mesh_data_name}")
 
+        # check if a different mesh with the same name (e.g. from a linked file) is present and COULD be a problem TODO the right way to check???
+        # if bpy.data.meshes.keys().count(mesh_data_name) > 1:
+        #     assert False, f"[ERROR] file has more than one mesh named {mesh_data_name}, being conservative and terminating"
+
     # assign geometry to use the exported asset
     xml_geom.set("mesh", "mesh_" + mesh_data_name)
 
-def export_options(xml_root): # TODO expose these in some sort of UI panel
+def export_options(context, xml_root): # TODO add lower priority options here and to the UI
     xml_compiler = SubElement(xml_root, "compiler")
     xml_compiler.set("angle", "radian")
     xml_compiler.set("coordinate", "local")
 
     xml_options = SubElement(xml_root, "option")
-    xml_options.set("timestep", "0.001")
-    xml_options.set("iterations", "100") # was using 20. 100 is default
-    #xml_options.set("integrator", "RK4") # Euler, RK4; Euler default
-    xml_options.set("o_solref", "0.001 1")
-    xml_options.set("o_solimp", "0.99 0.96 0.001")
+    xml_options.set("timestep", f"{context.scene.mjcf_option_timestep:.4}")
+    xml_options.set("iterations", f"{context.scene.mjcf_option_iterations}")
+    xml_options.set("integrator", context.scene.mjcf_option_integrator)
+    xml_options.set("cone", context.scene.mjcf_option_cone)
+    xml_options.set("jacobian", context.scene.mjcf_option_jacobian)
+    xml_options.set("solver", context.scene.mjcf_option_solver)
 
     xml_flags = SubElement(xml_options, "flag")
     xml_flags.set("sensornoise", "enable")
-    xml_flags.set("override", "enable") # will use the o_solref parameters
+
+    if context.scene.mjcf_flag_contactparam_override:
+        xml_options.set("o_solref", f"{context.scene.mjcf_option_osolref[0]:.4} {context.scene.mjcf_option_osolref[1]:.4}")
+        xml_options.set("o_solimp", f"{context.scene.mjcf_option_osolimp[0]:.4} {context.scene.mjcf_option_osolimp[1]:.4} {context.scene.mjcf_option_osolimp[2]:.4}")
+        xml_flags.set("override", "enable")
 
     xml_size = SubElement(xml_root, "size")
-    xml_size.set("nconmax", "2048") # TODO provide some user control. -1 will do auto!
-    xml_size.set("njmax", "2048") # TODO provide a user control. -1 will do automatic
+    xml_size.set("nconmax", f"{context.scene.mjcf_option_nconmax}")
+    xml_size.set("njmax", f"{context.scene.mjcf_option_njmax}")
+    xml_size.set("nuserdata", f"{context.scene.mjcf_option_nuserdata}")
     # TODO need "harder" contact constraint forces to react penetrations from tensioned track & springs
 
 def export_setup_folders():
@@ -194,7 +208,7 @@ def export_sensors(context, xml):
         # TODO rangefinder hack
         xml_sen = SubElement(xml_sensor_list, sen.sk_sensor_type)
         xml_sen.set("name", "sensor_"+sen.name)
-        xml_sen.set("site", sen.sk_parent_entity.name)
+        xml_sen.set("site", sen.name)
 
 
 def export_actuators(context, xml):
@@ -228,8 +242,8 @@ def export_actuators(context, xml):
             xml_act.set("gainprm", gain_string)
 
             # also need to set some global parameters in the size area to support this
+            # need njuserdata >= 5x actuator qty
             xml_size = xml.findall("size")
-            xml_size[0].set("nuserdata", "100") # this is a buffer for internal states, which are 5*num_actuators TODO smarter way to add these
             xml_size[0].set("nuser_actuator", "10") # 10 static properties (gains) per actuator
 
 def export_equalities(context, xml):
@@ -332,7 +346,7 @@ def export_entity(context, obj, xml_model, body_is_root, xml_asset):
         if obj.sk_solimp_custom:
             xml_entity.set("solimp", f"{obj.sk_solimp[0]} {obj.sk_solimp[1]} {obj.sk_solimp[2]}")
 
-    elif obj.enum_sk_type == "site":
+    elif obj.enum_sk_type == "site" or obj.enum_sk_type == "sensor":
         print(f"Exporting {obj.name} as SITE")
         xml_entity = SubElement(xml_model, "site")
         xml_entity.set("name", obj.name)
@@ -440,7 +454,7 @@ def export_tree(context, root):
     xml_root = Element('mujoco')
     xml_root.set('model', context.scene.robot_name)
 
-    export_options(xml_root)
+    export_options(context, xml_root)
     export_defaults()
 
     xml_asset = SubElement(xml_root, "asset")
@@ -492,8 +506,11 @@ class MJCFExportOperator(bpy.types.Operator):
             print("[WARNING] root object is not located at world origin.")
             self.report({'WARNING'}, 'Root object origin is not located at world origin. Transformations of objects attached to the world will be incorrect.')
 
-
         build_kinematic_tree(context)
+
+        if (nuserdata_estimate > context.scene.mjcf_option_nuserdata):
+            self.report({'WARNING'}, f"It is likely insufficient userdata is allocated. Recommend nuserdata={nuserdata_estimate}")
+
         export_tree(context, root)
         print('export, successful')
 
@@ -714,7 +731,7 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
 
                 if obj.sk_actuator_type == "cascade_pid":
                     row = layout.row()
-                    row.label(text="run mj.cymj.set_pid_control(sim.model, sim.data) to finish setup")
+                    row.label(text="run pid setup functions after loading model to finish setup")
 
                     box = layout.box()
                     box.label(text="Position Loop Parameters")
@@ -776,8 +793,14 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
             row = layout.row()
             row.prop(obj, "sk_sensor_type", text="Sensor Type")
 
-            row = layout.row()
-            row.prop(obj, "sk_parent_entity", text="Parent Body")
+            if obj.sk_sensor_type == 'force' or obj.sk_sensor_type == 'torque':
+                row = layout.row()
+                row.label(text="Measure force or torque between target object and its parent")
+                row = layout.row()
+                row.prop(obj, "sk_parent_entity", text="Target Body")
+            else:
+                row = layout.row()
+                row.prop(obj, "sk_parent_entity", text="Parent Body")
 
         if obj.enum_sk_type == "camera":
             if obj.type != "CAMERA":
@@ -807,12 +830,12 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
                     row = layout.row()
                     row.prop(obj, "sk_camera_target", text="Target")
 
-class SimpleKinematicsGlobalPanel(bpy.types.Panel):
-    bl_idname = "OBJECT_PT_sk_global"
-    bl_label = "Simple Kinematics"
+class SimpleKinematicsPanelQuickAccess(bpy.types.Panel):
+    bl_idname = "OBJECT_PT_sk_quickaccess"
+    bl_label = "Quick Access"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
-    bl_category = "Export"
+    bl_category = "MJCF Export"
 
     def draw(self, context):
         layout = self.layout
@@ -831,6 +854,47 @@ class SimpleKinematicsGlobalPanel(bpy.types.Panel):
         box.label(text=f"Type: {context.object.enum_sk_type}")
         box.prop(context.object, "rotation_euler")
         box.prop(context.object, "scale")
+
+class SimpleKinematicsPanelMJCFOptions(bpy.types.Panel):
+    bl_idname = "OBJECT_PT_sk_mjcfoptions"
+    bl_label = "MJCF Options"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "MJCF Export"
+
+    def draw(self, context):
+        layout = self.layout
+
+        row = layout.row()
+        row.prop(context.scene, "mjcf_option_integrator", text="Integrator")
+        row = layout.row()
+        row.prop(context.scene, "mjcf_option_timestep", text="Timestep (s)")
+
+        row = layout.row()
+        row.prop(context.scene, "mjcf_option_solver", text="Solver")
+        row = layout.row()
+        row.prop(context.scene, "mjcf_option_iterations", text="Solver Iterations")
+
+        row = layout.row()
+        row.prop(context.scene, "mjcf_option_cone", text="Friction Cone Type")
+        row = layout.row()
+        row.prop(context.scene, "mjcf_option_jacobian", text="Jacobian Type")
+
+
+        row = layout.row()
+        row.prop(context.scene, "mjcf_flag_contactparam_override", text="Override Contact Parameters")
+        if context.scene.mjcf_flag_contactparam_override:
+            row = layout.row()
+            row.prop(context.scene, "mjcf_option_osolref", text="Solref Override")
+            row = layout.row()
+            row.prop(context.scene, "mjcf_option_osolimp", text="Solimp Override")
+
+        row = layout.row()
+        row.prop(context.scene, "mjcf_option_nconmax", text="Maximum contacts")
+        row = layout.row()
+        row.prop(context.scene, "mjcf_option_njmax", text="Maximum constraints" )
+        row = layout.row()
+        row.prop(context.scene, "mjcf_option_nuserdata", text="User data variables")
 
 
 enum_joint_type_options = [
@@ -900,6 +964,28 @@ enum_camera_mode = [
     ("targetbodycom", "Target Body CM", "Tracks center of masss of kinematic subtree.Camera position is fixed in the parent body, while the camera orientation is adjusted so that it always points towards the targeted body. ")
 ]
 
+mjcf_options_integrators = [
+    ("Euler", "Euler", "why Euler?"),
+    ("RK4", "RK4", "4th-order Runge-Kutta method. why?")
+]
+
+mjcf_options_cone = [
+    ("pyramidal", "pyramidal", "Can make the solver faster and more robust"),
+    ("elliptic", "elliptic", "A better model of reality")
+]
+
+mjcf_options_jacobian = [
+    ("dense", "dense", "Normal. Selected by auto if system DOF<60. Required for manual manipulation of jacobian matrices, as done in parallel mechanisms"),
+    ("sparse", "sparse", "For more efficintly dealing with high DOF systems. Auto chooses this when DOF>60"),
+    ("auto", "auto", "Chooses dense (DOF<60) or sparse (DOF>60)")
+]
+
+mjcf_options_solver = [
+    ("Newton", "Newton", "The best choice for most models, default now"),
+    ("CG", "CG", "If Newton is slow, try CG next"),
+    ("PGS", "PGS", "The old default solver, unlikely to be the best now")
+]
+
 def register():
     # step angle for UI drags
     step_angle_ui = 1500 # about 15 degrees
@@ -960,7 +1046,7 @@ def register():
     bpy.types.Object.sk_equality_type = bpy.props.EnumProperty(items=enum_equality_type)
     bpy.types.Object.sk_equality_entity1 = bpy.props.PointerProperty(type=bpy.types.Object, name="sk_equality_entity1", description="equality entity 1", update=None)
     bpy.types.Object.sk_equality_entity2 = bpy.props.PointerProperty(type=bpy.types.Object, name="sk_equality_entity2", description="equality entity 2", update=None)
-    bpy.types.Object.sk_equality_polycoef = bpy.props.FloatVectorProperty(name="sk_equality_polycoef", size=5, description="y-y0 = a0 + a1*(x-x0) + a2*(x-x0)^2 + a3*(x-x0)^3 + a4*(x-x0)^4")
+    bpy.types.Object.sk_equality_polycoef = bpy.props.FloatVectorProperty(name="sk_equality_polycoef", size=5, description="a[i] in y-y0 = a0 + a1*(x-x0) + a2*(x-x0)^2 + a3*(x-x0)^3 + a4*(x-x0)^4")
     bpy.types.Object.sk_equality_distance = bpy.props.FloatProperty(name="sk_equality_distance", description="distance", unit="LENGTH")
 
     # Sensors
@@ -970,15 +1056,31 @@ def register():
     bpy.types.Object.sk_camera_mode = bpy.props.EnumProperty(items=enum_camera_mode)
     bpy.types.Object.sk_camera_target = bpy.props.PointerProperty(type=bpy.types.Object, name="sk_camera_target", description="camera target", update=None)
 
+    # Options
+    bpy.types.Scene.mjcf_option_timestep = bpy.props.FloatProperty(name="mjcf_option_timestep", description="timestep", unit="NONE", default=0.002, precision=3)
+    bpy.types.Scene.mjcf_option_iterations = bpy.props.IntProperty(name="mjcf_option_iterations", description="solver iterations", default=100)
+    bpy.types.Scene.mjcf_flag_contactparam_override = bpy.props.BoolProperty(name="mjcf_flag_contactparam_override", default=False)
+    bpy.types.Scene.mjcf_option_osolref = bpy.props.FloatVectorProperty(name="mjcf_option_osolref", description="override solref of contacts", size=2, precision=3, default=[0.002, 1.0])
+    bpy.types.Scene.mjcf_option_osolimp = bpy.props.FloatVectorProperty(name="mjcf_option_osolimp", description="override solimp of contacts", size=3, precision=3, default=[0.9, 0.8, 0.001])
+    bpy.types.Scene.mjcf_option_integrator = bpy.props.EnumProperty(items=mjcf_options_integrators)
+    bpy.types.Scene.mjcf_option_cone = bpy.props.EnumProperty(items=mjcf_options_cone)
+    bpy.types.Scene.mjcf_option_jacobian = bpy.props.EnumProperty(items=mjcf_options_jacobian)
+    bpy.types.Scene.mjcf_option_solver = bpy.props.EnumProperty(items=mjcf_options_solver)
+    bpy.types.Scene.mjcf_option_nconmax = bpy.props.IntProperty(name="mjcf_option_nconmax", description="Maximum number of contacts. -1 to automatically guess", default=-1)
+    bpy.types.Scene.mjcf_option_njmax = bpy.props.IntProperty(name="mjcf_option_njmax", description="Maximum number of scalar constraints. -1 to automatically guess", default=-1)
+    bpy.types.Scene.mjcf_option_nuserdata = bpy.props.IntProperty(name="mjcf_option_nuserdata", description="Additional custom user data items", default=100)
+
     # Add the user interface elements
     bpy.utils.register_class(MJCFExportOperator)
     bpy.utils.register_class(SimpleKinematicsJointPanel)
-    bpy.utils.register_class(SimpleKinematicsGlobalPanel)
+    bpy.utils.register_class(SimpleKinematicsPanelQuickAccess)
+    bpy.utils.register_class(SimpleKinematicsPanelMJCFOptions)
 
 def unregister():
     bpy.utils.unregister_class(MJCFExportOperator)
     bpy.utils.unregister_class(SimpleKinematicsJointPanel)
-    bpy.utils.unregister_class(SimpleKinematicsGlobalPanel)
+    bpy.utils.unregister_class(SimpleKinematicsPanelQuickAccess)
+    bpy.utils.unregister_class(SimpleKinematicsPanelMJCFOptions)
     del bpy.types.Scene.robot_name
     del bpy.types.Object.enum_joint_type
     del bpy.types.Object.enum_joint_axis
