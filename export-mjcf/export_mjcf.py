@@ -726,6 +726,11 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
                     box.prop(obj, "sk_actuator_pid", text="Derivative Gain (Td_pos)", index=3)
                     box.prop(obj, "sk_actuator_pid", text="Derivative Smoothing EMA (Td_smooth_pos)", index=4)
 
+                    # EMA factors = 0 are "past value only" and never update
+                    if obj.sk_actuator_pid[8] <= 0 or obj.sk_actuator_pid[4] <= 0:
+                        row = layout.row()
+                        row.label(text="ERROR: EMA smooth factors must be >0", icon="ERROR")
+
                     box = layout.box()
                     box.label(text="Velocity Loop Parameters")
                     box.prop(obj, "sk_actuator_pid", text="Speed Limit Clamp (max_vel)", index=9)
