@@ -1,6 +1,16 @@
+bl_info = {
+    "name": "Export MJCF",
+    "description": "Tool to define MJCF properties and export",
+    "author": "Jay Jasper",
+    "version": (0, 2),
+    "blender": (3, 2, 0), # note as of 2022-04-12 requires alpha build
+    "location": "View3D > Export MJCF Panel",
+    "warning": "",
+    "category": "Import-Export"
+}
 # Simple MJCF Kinematics Exporter for Blender
 # Jay J.
-# 2020
+# 2022
 
 ### docs; model structure
 # any mesh, any shape
@@ -122,8 +132,7 @@ def export_stl(context, obj, xml_geom, xml_asset):
         bpy.ops.object.select_all(action='DESELECT')
         obj.select_set(True)
 
-        # CAUTION! the option use_global_frame requres modifying Blender D11517 (https://developer.blender.org/D11517)
-        bpy.ops.export_mesh.stl(filepath=bpy.path.abspath('//mesh_stl/' + mesh_data_name + '.stl'), use_selection=True, use_global_frame=False, ascii=False)
+        bpy.ops.export_mesh.stl(filepath=bpy.path.abspath('//mesh_stl/' + mesh_data_name + '.stl'), use_selection=True, global_space=obj.matrix_world, ascii=False)
 
         # restore selection
         bpy.ops.object.select_all(action='DESELECT')
@@ -411,7 +420,7 @@ def export_entity(context, obj, xml_model, body_is_root, xml_asset):
         if obj.sk_joint_armature != 0:
             xml_entity.set("armature", repr(obj.sk_joint_armature))
 
-        for j, child in obj['sk_child_entity_list'].iteritems():
+        for j, child in obj['sk_child_entity_list'].items():
             export_entity(context, child, xml_model, False, xml_asset)
 
     elif obj.enum_sk_type == "body":
@@ -435,7 +444,7 @@ def export_entity(context, obj, xml_model, body_is_root, xml_asset):
             else:
                 export_mesh_geom(context, obj, xml_entity, xml_asset, visualization_only=True)
 
-        for j, child in obj['sk_child_entity_list'].iteritems():
+        for j, child in obj['sk_child_entity_list'].items():
             export_entity(context, child, xml_entity, False, xml_asset)
 
     elif obj.enum_sk_type == "camera":
@@ -1081,7 +1090,6 @@ def unregister():
     del bpy.types.Object.enum_joint_axis
     del bpy.types.Object.sk_joint_armature
     del bpy.types.Object.sk_parent_entity
-    del bpy.types.Object.sk_child_entity
     del bpy.types.Object.enum_sk_type
     del bpy.types.Object.sk_mass
     del bpy.types.Object.sk_is_actuator
