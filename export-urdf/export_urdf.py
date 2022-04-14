@@ -1,3 +1,12 @@
+bl_info = {
+    "name": "Export URDF",
+    "description": "Tool to define URDF properties and export",
+    "author": "Jay Jasper",
+    "version": (0.1),
+    "blender": (3, 2, 0),
+    "warning": "",
+    "category": "Import-Export"
+}
 # Simple URDF Kinematics Exporter for Blender
 # Jay J.
 # 2021
@@ -208,10 +217,7 @@ def xml_origin_wrt_parent(context, obj, xml_entity):
     if obj['sk_link_parent_joint'] == None:
         pose_wrt_parent = obj.matrix_world
     else:
-        if context.scene.local_meshes:
-           pose_wrt_parent = obj['sk_link_parent_joint'].matrix_world.inverted() @ obj.matrix_world
-        else:
-          pose_wrt_parent = obj['sk_link_parent_joint'].matrix_world.inverted()
+       pose_wrt_parent = obj['sk_link_parent_joint'].matrix_world.inverted() @ obj.matrix_world
     
     pose_xyz = ''
     pose_xyz += repr(pose_wrt_parent.translation[0]) + " "
@@ -243,9 +249,7 @@ def export_link_inertial(context, obj, xml_link):
 def export_stl(context, obj, xml_geometry):
     mesh_data_name = obj.data.name
 
-    # if not using local_meshes option, then have to export a new object for sure
-    # if yes using local_meshes option, then only export if the mesh hasn't been exported yet
-    if not context.scene.local_meshes or meshes_exported.count(mesh_data_name) == 0:
+    if meshes_exported.count(mesh_data_name) == 0:
 
         # store the active object so it can be restored later
         sel_obj = bpy.context.view_layer.objects.active
@@ -259,21 +263,14 @@ def export_stl(context, obj, xml_geometry):
         bpy.ops.object.select_all(action='DESELECT')
         obj.select_set(True)
         
-        if context.scene.local_meshes:
-            # CAUTION! the option use_global_frame requres modifying Blender D11517 (https://developer.blender.org/D11517)
-            bpy.ops.export_mesh.stl(filepath=bpy.path.abspath('//'+context.scene.robot_name+'/meshes/' + mesh_data_name + '.stl'), use_selection=True, use_global_frame=False)
-        else:
-            bpy.ops.export_mesh.stl(filepath=bpy.path.abspath('//'+context.scene.robot_name+'/meshes/' + obj.name + '.stl'), use_selection=True) # after D11517, this has a default argument use_global_frame=True so this line will still work
+        bpy.ops.export_mesh.stl(filepath=bpy.path.abspath('//'+context.scene.robot_name+'/meshes/' + mesh_data_name + '.stl'), use_selection=True, global_space=obj.matrix_world) 
         
         # restore selection
         bpy.ops.object.select_all(action='DESELECT')
         sel_obj.select_set(True)
     
     xml_mesh = SubElement(xml_geometry, 'mesh')
-    if context.scene.local_meshes:
-        xml_mesh.set('filename', 'package://'+ context.scene.robot_name + "/meshes/" + mesh_data_name + '.stl')
-    else:
-        xml_mesh.set('filename', 'package://'+ context.scene.robot_name + "/meshes/" + obj.name + '.stl')
+    xml_mesh.set('filename', 'package://'+ context.scene.robot_name + "/meshes/" + mesh_data_name + '.stl')
     
 
 def export_link_collision_stl(context, obj, xml_link):
@@ -298,10 +295,7 @@ def export_link_visual_stl(context, obj, xml_link):
     if obj['sk_link_parent_joint'] == None:
             pose_wrt_parent = obj.matrix_world
     else:
-        if context.scene.local_meshes:
-            pose_wrt_parent = obj['sk_link_parent_joint'].matrix_world.inverted() @ obj.matrix_world
-        else:
-            pose_wrt_parent = obj['sk_link_parent_joint'].matrix_world.inverted()
+        pose_wrt_parent = obj['sk_link_parent_joint'].matrix_world.inverted() @ obj.matrix_world
     
     pose_xyz = ''
     pose_xyz += repr(pose_wrt_parent.translation[0]) + " "
@@ -446,7 +440,7 @@ def export_tree(context):
         
         export_link(context, link, xml_root)
         
-        for j, joint in link['sk_link_child_joints'].iteritems():
+        for j, joint in link['sk_link_child_joints'].items():
             
             export_joint(context, joint, xml_root)
             
@@ -509,9 +503,6 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
         row = layout.row()
         row.prop(context.scene, "robot_name", text="Robot Name")
 
-        row = layout.row()
-        row.prop(context.scene, "local_meshes", text="Use local meshes (shared when possible)")
-        
         row = layout.row()
         row.prop(obj, 'enum_sk_type', text='Type', expand=True)
         
@@ -662,7 +653,6 @@ def register():
     bpy.types.Object.sk_axis_z_upper_lin = bpy.props.FloatProperty(name="z_upper_lin", default=0, soft_min=-1, soft_max=1, unit="LENGTH", step=step_lin_ui)
     
     bpy.types.Scene.robot_name = bpy.props.StringProperty(name="robot_name", default="")
-    bpy.types.Scene.local_meshes = bpy.props.BoolProperty(name="local_meshes", default=False, description="Local coordinates and shared mesh files if you have https://developer.blender.org/D11517")
     
     bpy.utils.register_class(URDFExportOperator)
     bpy.utils.register_class(SimpleKinematicsJointPanel)
@@ -678,7 +668,6 @@ def unregister():
     del bpy.types.Object.enum_sk_type
     del bpy.types.Object.sk_mass
     del bpy.types.Scene.robot_name
-    del bpy.types.Scene.local_meshes
 
 if __name__ == "__main__":
     register()
