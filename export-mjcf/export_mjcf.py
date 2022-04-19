@@ -67,7 +67,24 @@ sensor_list = []
 meshes_exported = []
 nuserdata_estimate = 0
 
-def build_kinematic_tree(context):
+def print_tf_tree(obj, level):
+    spaces = level*"   "
+    for i, child in obj['tf_tree_children'].items():
+        print(f"{spaces}{child.name}")
+        print_tf_tree(child, level+1)
+
+# joint is child from MJCF's perspective - can only have one
+def get_joints(obj):
+    joints = []
+    for i, child in obj['sk_child_entity_list'].items():
+        if child.enum_sk_type == "joint":
+            joints.append(child)
+
+    assert len(joints) < 2, "too many child joints detected in TF tree build"
+    return joints
+
+
+def build_kinematic_tree(context, root):
     actuator_list.clear()
     equality_list.clear()
     sensor_list.clear()
@@ -76,21 +93,23 @@ def build_kinematic_tree(context):
     nuserdata_estimate = 0
     for obj in context.scene.objects:
         obj['sk_child_entity_list'] = {}
+        obj['tf_tree_children'] = {}
 
+    # find the tree as needed by MJCF XML format
     for obj in context.scene.objects:
         if (["body", "joint", "geom", "site", "camera", "sensor"].count(obj.enum_sk_type) > 0 ) and not( obj.sk_parent_entity == None):
 
             parent = obj.sk_parent_entity
             if obj.enum_sk_type == "body":
-                # search for the upper body
+                # MJCF XML organized by bodies; recursively search until the parent body is found
                 attempts = 0
                 attempt_limit = 512
-
                 while parent.enum_sk_type != "body":
                     parent = parent.sk_parent_entity
                     attempts += 1
                     assert attempts < attempt_limit, "Some tangle in the kinematic tree."
 
+            # Verify the object marked as parent still exists
             try:
                 x = context.scene.objects[parent.name]
             except:
@@ -113,6 +132,51 @@ def build_kinematic_tree(context):
         if obj.enum_sk_type == "sensor":
             print(f"append sensor {obj.name}")
             sensor_list.append(obj)
+    
+    # find the boring kinematic tree
+    for obj in context.scene.objects:
+        if obj.sk_parent_entity != None:
+
+            # if object is participating in the kinematic stuff
+            if obj.enum_sk_type == "body":
+                assert obj.sk_parent_entity.enum_sk_type == "body"
+                joints = get_joint(obj)
+
+                # simple body add
+                if len(joints) == 0:
+                    print(f"detected body to body tree between {obj.name} and {obj.sk_parent_entity.name}")
+                    dict_tmp = context.scene.objects[obj.sk_parent_entity.name]['tf_tree_children']
+                    dict_tmp[repr(len(dict_tmp.keys())+1)] = obj
+                    continue
+
+                child = joints[0]
+                parent = obj.sk_parent_entity
+                while parent != obj:
+                    dict_tmp = context.scene.objects[parent.name]['tf_tree_children']
+                    dict_tmp[repr(len(dict_tmp.keys())+1)] = child
+
+                    parent = child
+                    # figure out the new child...
+                    # TODO this is horrible efficiency
+                    joints = get_joints(parent)
+                    if len(joints) == 1:
+                        child = joints[0]
+                    elif len(joints) == 0:
+                        # found the end body
+                        child = obj
+
+            # if a simple type then can just mark its parent directly 
+            if (["geom", "site", "camera", "sensor"].count(obj.enum_sk_type) > 0):
+                print(f"simple kinematic add {obj.name}")
+                dict_tmp = context.scene.objects[obj.sk_parent_entity.name]['tf_tree_children']
+                dict_tmp[repr(len(dict_tmp.keys())+1)] = obj
+                
+
+    # verify the boring kinematic tree
+    print("Print the TF tree!")
+    print_tf_tree(root, 0)
+    print("done printing the TF tree")
+
 
 def export_stl(context, obj, xml_geom, xml_asset):  
 
@@ -515,7 +579,7 @@ class MJCFExportOperator(bpy.types.Operator):
             print("[WARNING] root object is not located at world origin.")
             self.report({'WARNING'}, 'Root object origin is not located at world origin. Transformations of objects attached to the world will be incorrect.')
 
-        build_kinematic_tree(context)
+        build_kinematic_tree(context, root)
 
         if (nuserdata_estimate > context.scene.mjcf_option_nuserdata):
             self.report({'WARNING'}, f"It is likely insufficient userdata is allocated. Recommend nuserdata={nuserdata_estimate}")
@@ -853,6 +917,8 @@ class SimpleKinematicsPanelQuickAccess(bpy.types.Panel):
             box = layout.box()
             box.label(text="Repeat Export")
             box.label(text=f"Previous Root: {context.scene.root_previous.name}")
+
+            # TODO update kinematic tree preview button
 
             export_button = box.operator("sk.export_mjcf", text="Export Again")
             export_button.action = 'MJCF'
