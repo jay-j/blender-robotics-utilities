@@ -2,7 +2,7 @@ bl_info = {
     "name": "Export MJCF",
     "description": "Tool to define MJCF properties and export",
     "author": "Jay Jasper",
-    "version": (0, 2),
+    "version": (0, 3),
     "blender": (3, 2, 0), # note as of 2022-04-12 requires alpha build
     "location": "View3D > Export MJCF Panel",
     "warning": "",
@@ -84,6 +84,8 @@ def get_joints(obj):
     return joints
 
 
+# TODO auto recompute the tree triggered by changing properties that would affect the tree structure
+# TODO add a button to disable this auto recompute behavior
 def build_kinematic_tree(context, root):
     actuator_list.clear()
     equality_list.clear()
@@ -140,7 +142,7 @@ def build_kinematic_tree(context, root):
             # if object is participating in the kinematic stuff
             if obj.enum_sk_type == "body":
                 assert obj.sk_parent_entity.enum_sk_type == "body"
-                joints = get_joint(obj)
+                joints = get_joints(obj)
 
                 # simple body add
                 if len(joints) == 0:
