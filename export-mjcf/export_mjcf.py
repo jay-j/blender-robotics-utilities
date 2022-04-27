@@ -36,6 +36,55 @@ from xml.etree.ElementTree import Element, SubElement, Comment, tostring
 from xml.dom import minidom
 # https://pymotw.com/2/xml/etree/ElementTree/create.html
 
+### live tree drawing stuff
+import mathutils 
+import gpu
+from gpu_extras.batch import batch_for_shader
+
+class TFDisplay():
+    def __init__(self):
+        self.draw_handler = None
+        self.dpupdate = None
+        self.shader = gpu.shader.from_builtin('3D_SMOOTH_COLOR')
+
+    def tf_display_draw(self, scene):
+        verts = []
+        colors = []
+
+        color = mathutils.Color()
+        color.hsv = (0, 1.0, 1.0)
+
+        for obj in scene.objects:
+            for i, child in obj['tf_tree_children'].items():
+                verts.append(child.matrix_world.translation)
+                verts.append(obj.matrix_world.translation)
+                colors.append( color[:] + (1.0,))
+                colors.append( color[:] + (1.0,))
+                color.h = (color.h + 0.37) % 1.0
+
+        batch = batch_for_shader(self.shader, 'LINES', {"pos":verts, "color":colors})
+        self.shader.bind()
+        batch.draw(self.shader)
+
+    def tf_display_update(self, scene, unknown):
+        print("tf display update: ")
+        # TODO does this cause infinite buildup of draw handler calls? that seems bad?
+        if self.draw_handler is not None:
+            bpy.types.SpaceView3D.draw_handler_remove(self.draw_handler, 'WINDOW')
+            self.draw_handler = None
+        if scene.kinematic_tree_display:
+            self.draw_handler = bpy.types.SpaceView3D.draw_handler_add(self.tf_display_draw, (scene,), 'WINDOW', 'POST_VIEW')
+
+    def init(self):
+        #if bpy.context.scene.kinematic_tree_display:
+        print("Display property changed, turning the tree ON")
+        self.dpupdate = bpy.app.handlers.depsgraph_update_pre.append(self.tf_display_update)
+        #else:
+        #    pass
+            # if dpupdate is not None:
+            #     bpy.app.handlers.depsgraph_update_pre.remove(dpupdate)
+            #     print("Display property changed, turning the tree OFF")
+
 def xml_pretty(elem):
     """Return a pretty-printed XML string for the Element.
     """
@@ -946,7 +995,7 @@ class SimpleKinematicsPanelQuickAccess(bpy.types.Panel):
             export_button.use_selected_object=False
 
             box = layout.box()
-            box.label(text="Kinematic Tree Debugging")
+            box.label(text="Kinematic Tree Debugging (experimental)")
             row = box.row()
             row.prop(context.scene, "kinematic_tree_display", text="show")
             row.prop(context.scene, "kinematic_tree_autogen", text="auto")
@@ -1098,13 +1147,19 @@ def register():
     bpy.types.Scene.robot_name = bpy.props.StringProperty(name="robot_name", default="")
     bpy.types.Scene.root_previous =bpy.props.PointerProperty(type=bpy.types.Object, name="root_previous", description="Last-used root export object", update=None)
     bpy.types.Object.enum_sk_type = bpy.props.EnumProperty(items=enum_sk_type, update=build_kinematic_tree_auto)
-    bpy.types.Scene.kinematic_tree_display = bpy.props.BoolProperty(name="kinematic_tree_display", default=True)
+
+    # more general properties
+    bpy.types.Scene.kinematic_tree_display = bpy.props.BoolProperty(name="kinematic_tree_display", default=True, update=None)
     bpy.types.Scene.kinematic_tree_autogen = bpy.props.BoolProperty(name="kinematic_tree_autogen", default=True)
     bpy.types.Object.sk_parent_entity = bpy.props.PointerProperty(type=bpy.types.Object, name="sk_parent_entity", description="Simple Kinematics Parent Entity", update=build_kinematic_tree_auto)
     bpy.types.Object.sk_solref = bpy.props.FloatVectorProperty(name="sk_solref", size=2, default=[0.0005, 1], precision=4, description="(timeconst, dampratio). Should keep [time constant] > 2*[simulation stpe time]")
     bpy.types.Object.sk_solref_custom = bpy.props.BoolProperty(name="sk_solref_custom", default=False)
     bpy.types.Object.sk_solimp = bpy.props.FloatVectorProperty(name="sk_solimp", size=3, default=[2, 1.2, 0.001], precision=4)
     bpy.types.Object.sk_solimp_custom = bpy.props.BoolProperty(name="sk_solimp_custom", default=False)
+
+    # fancy display
+    tfdisp = TFDisplay()
+    tfdisp.init()
 
     # Body & Geom Properties
     bpy.types.Object.sk_mass = bpy.props.FloatProperty(name='sk_mass', default=1)
@@ -1181,6 +1236,7 @@ def register():
     bpy.utils.register_class(SimpleKinematicsJointPanel)
     bpy.utils.register_class(SimpleKinematicsPanelQuickAccess)
     bpy.utils.register_class(SimpleKinematicsPanelMJCFOptions)
+
 
 def unregister():
     bpy.utils.unregister_class(MJCFBuildTreeOperator)
