@@ -80,6 +80,111 @@ def get_joints(obj):
     assert len(joints) < 2, "too many child joints detected in TF tree build"
     return joints
 
+def build_kinematic_tree(self, context):
+    # too much of an assumption that root_previous exists?
+    try:
+        root = context.scene.root_previous
+    except:
+        print("Kinematic tree root not found, cancelling tree build update")
+        return {'CANCELLED'}
+
+# TODO auto recompute the tree triggered by changing properties that would affect the tree structure
+# TODO add a button to disable this auto recompute behavior
+    actuator_list.clear()
+    equality_list.clear()
+    sensor_list.clear()
+    meshes_exported.clear()
+    global nuserdata_estimate
+    nuserdata_estimate = 0
+    for obj in context.scene.objects:
+        obj['sk_child_entity_list'] = {}
+        obj['tf_tree_children'] = {}
+
+    # find the tree as needed by MJCF XML format
+    for obj in context.scene.objects:
+        if (["body", "joint", "geom", "site", "camera", "sensor"].count(obj.enum_sk_type) > 0 ) and not( obj.sk_parent_entity == None):
+
+            parent = obj.sk_parent_entity
+            if obj.enum_sk_type == "body":
+                # MJCF XML organized by bodies; recursively search until the parent body is found
+                attempts = 0
+                attempt_limit = 512
+                while parent.enum_sk_type != "body":
+                    parent = parent.sk_parent_entity
+                    attempts += 1
+                    assert attempts < attempt_limit, "Some tangle in the kinematic tree."
+
+            # Verify the object marked as parent still exists
+            try:
+                x = context.scene.objects[parent.name]
+            except:
+                assert False, f"When investigating {obj.name} can't find parent {parent.name}"
+
+            # now register with the parent
+            dict_tmp = context.scene.objects[parent.name]['sk_child_entity_list']
+            dict_tmp[repr(len(dict_tmp.keys())+1)] = obj
+
+        # register lists of elements that don't get built by traversing the kinematic tree
+        if obj.enum_sk_type == "joint" and obj.sk_is_actuator:
+            print(f"append actuator {obj.name}")
+            actuator_list.append(obj)
+            nuserdata_estimate += 5
+
+        if obj.enum_sk_type == "equality":
+            print(f"append equality {obj.name}")
+            equality_list.append(obj)
+
+        if obj.enum_sk_type == "sensor":
+            print(f"append sensor {obj.name}")
+            sensor_list.append(obj)
+    
+    # find the boring kinematic tree
+    for obj in context.scene.objects:
+        if obj.sk_parent_entity != None:
+
+            # if object is participating in the kinematic stuff
+            if obj.enum_sk_type == "body":
+                assert obj.sk_parent_entity.enum_sk_type == "body"
+                joints = get_joints(obj)
+
+                # simple body add
+                if len(joints) == 0:
+                    # print(f"detected body to body tree between {obj.name} and {obj.sk_parent_entity.name}")
+                    dict_tmp = context.scene.objects[obj.sk_parent_entity.name]['tf_tree_children']
+                    dict_tmp[repr(len(dict_tmp.keys())+1)] = obj
+                    continue
+
+                child = joints[0]
+                parent = obj.sk_parent_entity
+                while parent != obj:
+                    dict_tmp = context.scene.objects[parent.name]['tf_tree_children']
+                    dict_tmp[repr(len(dict_tmp.keys())+1)] = child
+
+                    parent = child
+                    # figure out the new child...
+                    # TODO this is horrible efficiency
+                    joints = get_joints(parent)
+                    if len(joints) == 1:
+                        child = joints[0]
+                    elif len(joints) == 0:
+                        # found the end body
+                        child = obj
+
+            # if a simple type then can just mark its parent directly 
+            if (["geom", "site", "camera", "sensor"].count(obj.enum_sk_type) > 0):
+                # print(f"simple kinematic add {obj.name}")
+                dict_tmp = context.scene.objects[obj.sk_parent_entity.name]['tf_tree_children']
+                dict_tmp[repr(len(dict_tmp.keys())+1)] = obj
+                
+
+    # verify the boring kinematic tree
+    print("Print the (serial) TF tree!")
+    print_tf_tree(root, 0)
+
+def build_kinematic_tree_auto(self, context):
+    if context.scene.kinematic_tree_autogen:
+        build_kinematic_tree(self, context)
+
 class MJCFBuildTreeOperator(bpy.types.Operator):
     bl_idname = 'sk.export_mjcf_build_tree'
     bl_label = 'Build MJCF Kinematic Tree'
@@ -91,106 +196,7 @@ class MJCFBuildTreeOperator(bpy.types.Operator):
         )
 
     def execute(self, context):
-        # too much of an assumption that root_previous exists?
-        try:
-            root = context.scene.root_previous
-        except:
-            print("Kinematic tree root not found, cancelling tree build update")
-            return {'CANCELLED'}
- 
-# TODO auto recompute the tree triggered by changing properties that would affect the tree structure
-# TODO add a button to disable this auto recompute behavior
-        actuator_list.clear()
-        equality_list.clear()
-        sensor_list.clear()
-        meshes_exported.clear()
-        global nuserdata_estimate
-        nuserdata_estimate = 0
-        for obj in context.scene.objects:
-            obj['sk_child_entity_list'] = {}
-            obj['tf_tree_children'] = {}
-
-        # find the tree as needed by MJCF XML format
-        for obj in context.scene.objects:
-            if (["body", "joint", "geom", "site", "camera", "sensor"].count(obj.enum_sk_type) > 0 ) and not( obj.sk_parent_entity == None):
-
-                parent = obj.sk_parent_entity
-                if obj.enum_sk_type == "body":
-                    # MJCF XML organized by bodies; recursively search until the parent body is found
-                    attempts = 0
-                    attempt_limit = 512
-                    while parent.enum_sk_type != "body":
-                        parent = parent.sk_parent_entity
-                        attempts += 1
-                        assert attempts < attempt_limit, "Some tangle in the kinematic tree."
-
-                # Verify the object marked as parent still exists
-                try:
-                    x = context.scene.objects[parent.name]
-                except:
-                    assert False, f"When investigating {obj.name} can't find parent {parent.name}"
-
-                # now register with the parent
-                dict_tmp = context.scene.objects[parent.name]['sk_child_entity_list']
-                dict_tmp[repr(len(dict_tmp.keys())+1)] = obj
-
-            # register lists of elements that don't get built by traversing the kinematic tree
-            if obj.enum_sk_type == "joint" and obj.sk_is_actuator:
-                print(f"append actuator {obj.name}")
-                actuator_list.append(obj)
-                nuserdata_estimate += 5
-
-            if obj.enum_sk_type == "equality":
-                print(f"append equality {obj.name}")
-                equality_list.append(obj)
-
-            if obj.enum_sk_type == "sensor":
-                print(f"append sensor {obj.name}")
-                sensor_list.append(obj)
-        
-        # find the boring kinematic tree
-        for obj in context.scene.objects:
-            if obj.sk_parent_entity != None:
-
-                # if object is participating in the kinematic stuff
-                if obj.enum_sk_type == "body":
-                    assert obj.sk_parent_entity.enum_sk_type == "body"
-                    joints = get_joints(obj)
-
-                    # simple body add
-                    if len(joints) == 0:
-                        print(f"detected body to body tree between {obj.name} and {obj.sk_parent_entity.name}")
-                        dict_tmp = context.scene.objects[obj.sk_parent_entity.name]['tf_tree_children']
-                        dict_tmp[repr(len(dict_tmp.keys())+1)] = obj
-                        continue
-
-                    child = joints[0]
-                    parent = obj.sk_parent_entity
-                    while parent != obj:
-                        dict_tmp = context.scene.objects[parent.name]['tf_tree_children']
-                        dict_tmp[repr(len(dict_tmp.keys())+1)] = child
-
-                        parent = child
-                        # figure out the new child...
-                        # TODO this is horrible efficiency
-                        joints = get_joints(parent)
-                        if len(joints) == 1:
-                            child = joints[0]
-                        elif len(joints) == 0:
-                            # found the end body
-                            child = obj
-
-                # if a simple type then can just mark its parent directly 
-                if (["geom", "site", "camera", "sensor"].count(obj.enum_sk_type) > 0):
-                    print(f"simple kinematic add {obj.name}")
-                    dict_tmp = context.scene.objects[obj.sk_parent_entity.name]['tf_tree_children']
-                    dict_tmp[repr(len(dict_tmp.keys())+1)] = obj
-                    
-
-        # verify the boring kinematic tree
-        print("Print the TF tree!")
-        print_tf_tree(root, 0)
-        print("done printing the TF tree")
+        build_kinematic_tree(self, context)
 
         return {'FINISHED'}
 
@@ -935,12 +941,16 @@ class SimpleKinematicsPanelQuickAccess(bpy.types.Panel):
             box.label(text="Repeat Export")
             box.label(text=f"Previous Root: {context.scene.root_previous.name}")
 
-            # TODO update kinematic tree preview button
-            tree_button = box.operator("sk.export_mjcf_build_tree", text="Rebuild Tree Once")
-
             export_button = box.operator("sk.export_mjcf", text="Export Again")
             export_button.action = 'MJCF'
             export_button.use_selected_object=False
+
+            box = layout.box()
+            box.label(text="Kinematic Tree Debugging")
+            row = box.row()
+            row.prop(context.scene, "kinematic_tree_display", text="show")
+            row.prop(context.scene, "kinematic_tree_autogen", text="auto")
+            tree_button = box.operator("sk.export_mjcf_build_tree", text="Rebuild Tree Once")
 
         box = layout.box()
         box.label(text="This Object")
@@ -1087,8 +1097,10 @@ def register():
     # General Properties
     bpy.types.Scene.robot_name = bpy.props.StringProperty(name="robot_name", default="")
     bpy.types.Scene.root_previous =bpy.props.PointerProperty(type=bpy.types.Object, name="root_previous", description="Last-used root export object", update=None)
-    bpy.types.Object.enum_sk_type = bpy.props.EnumProperty(items=enum_sk_type)
-    bpy.types.Object.sk_parent_entity = bpy.props.PointerProperty(type=bpy.types.Object, name="sk_parent_entity", description="Simple Kinematics Parent Entity", update=None)
+    bpy.types.Object.enum_sk_type = bpy.props.EnumProperty(items=enum_sk_type, update=build_kinematic_tree_auto)
+    bpy.types.Scene.kinematic_tree_display = bpy.props.BoolProperty(name="kinematic_tree_display", default=True)
+    bpy.types.Scene.kinematic_tree_autogen = bpy.props.BoolProperty(name="kinematic_tree_autogen", default=True)
+    bpy.types.Object.sk_parent_entity = bpy.props.PointerProperty(type=bpy.types.Object, name="sk_parent_entity", description="Simple Kinematics Parent Entity", update=build_kinematic_tree_auto)
     bpy.types.Object.sk_solref = bpy.props.FloatVectorProperty(name="sk_solref", size=2, default=[0.0005, 1], precision=4, description="(timeconst, dampratio). Should keep [time constant] > 2*[simulation stpe time]")
     bpy.types.Object.sk_solref_custom = bpy.props.BoolProperty(name="sk_solref_custom", default=False)
     bpy.types.Object.sk_solimp = bpy.props.FloatVectorProperty(name="sk_solimp", size=3, default=[2, 1.2, 0.001], precision=4)
