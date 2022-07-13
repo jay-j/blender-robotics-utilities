@@ -55,12 +55,13 @@ class TFDisplay():
         color.hsv = (0, 1.0, 1.0)
 
         for obj in scene.objects:
-            for i, child in obj['tf_tree_children'].items():
-                verts.append(child.matrix_world.translation)
-                verts.append(obj.matrix_world.translation)
-                colors.append( color[:] + (1.0,))
-                colors.append( color[:] + (1.0,))
-                color.h = (color.h + 0.37) % 1.0
+            if "tf_tree_children" in obj:
+                for i, child in obj['tf_tree_children'].items():
+                    verts.append(child.matrix_world.translation)
+                    verts.append(obj.matrix_world.translation)
+                    colors.append( color[:] + (1.0,))
+                    colors.append( color[:] + (1.0,))
+                    color.h = (color.h + 0.37) % 1.0
 
         batch = batch_for_shader(self.shader, 'LINES', {"pos":verts, "color":colors})
         self.shader.bind()
