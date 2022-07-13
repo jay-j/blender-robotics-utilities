@@ -40,6 +40,7 @@ from xml.dom import minidom
 import mathutils 
 import gpu
 from gpu_extras.batch import batch_for_shader
+from bpy.app.handlers import persistent
 
 class TFDisplay():
     def __init__(self):
@@ -67,9 +68,13 @@ class TFDisplay():
         self.shader.bind()
         batch.draw(self.shader)
 
+    @persistent
     def tf_display_update(self, scene, unknown):
         print("tf display update: ")
         # TODO does this cause infinite buildup of draw handler calls? that seems bad?
+        # The @persistent decorator is used to keep the handler running across multiple files. 
+        # If this function is not marked as persistent, then the add-on register() function would 
+        # have to be run after every file is loaded.
         if self.draw_handler is not None:
             bpy.types.SpaceView3D.draw_handler_remove(self.draw_handler, 'WINDOW')
             self.draw_handler = None
