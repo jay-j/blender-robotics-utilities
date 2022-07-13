@@ -3,7 +3,7 @@ bl_info = {
     "description": "Tool to define MJCF properties and export",
     "author": "Jay Jasper",
     "version": (0, 3),
-    "blender": (3, 3, 0), # note as of 2022-04-12 requires alpha build
+    "blender": (3, 2, 0),
     "location": "View3D > Export MJCF Panel",
     "warning": "",
     "category": "Import-Export"
