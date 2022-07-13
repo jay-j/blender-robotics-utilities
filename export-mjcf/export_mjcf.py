@@ -253,9 +253,8 @@ class MJCFBuildTreeOperator(bpy.types.Operator):
 
 def export_stl(context, obj, xml_geom, xml_asset):  
 
-    mesh_data_name = obj.data.name
-    if meshes_exported.count(mesh_data_name) == 0:
-        print(f"Exporting new STL mesh for object {obj.name}")
+    if meshes_exported.count(obj.data) == 0:
+        print(f"Exporting new STL mesh {obj.data.name} for object {obj.name}")
 
         # store the active object so it can be restored later
         sel_obj = bpy.context.view_layer.objects.active
@@ -269,7 +268,7 @@ def export_stl(context, obj, xml_geom, xml_asset):
         bpy.ops.object.select_all(action='DESELECT')
         obj.select_set(True)
 
-        bpy.ops.export_mesh.stl(filepath=bpy.path.abspath('//mesh_stl/' + mesh_data_name + '.stl'), use_selection=True, global_space=obj.matrix_world, ascii=False)
+        bpy.ops.export_mesh.stl(filepath=bpy.path.abspath('//mesh_stl/' + obj.data.name + '.stl'), use_selection=True, global_space=obj.matrix_world, ascii=False)
 
         # restore selection
         bpy.ops.object.select_all(action='DESELECT')
@@ -277,19 +276,19 @@ def export_stl(context, obj, xml_geom, xml_asset):
 
         # if new asset have to do this and run the export
         xml_stl = SubElement(xml_asset, "mesh")
-        xml_stl.set("name", "mesh_" + mesh_data_name)
-        xml_stl.set("file", "mesh_stl/" + mesh_data_name + ".stl")
+        xml_stl.set("name", "mesh_" + obj.data.name)
+        xml_stl.set("file", "mesh_stl/" + obj.data.name + ".stl")
 
-        meshes_exported.append(mesh_data_name)
+        meshes_exported.append(obj.data)
     else:
-        print(f"Object {obj.name} using already exported mesh {mesh_data_name}")
+        print(f"Object {obj.name} using already exported mesh {obj.data.name}")
 
         # check if a different mesh with the same name (e.g. from a linked file) is present and COULD be a problem TODO the right way to check???
         # if bpy.data.meshes.keys().count(mesh_data_name) > 1:
         #     assert False, f"[ERROR] file has more than one mesh named {mesh_data_name}, being conservative and terminating"
 
     # assign geometry to use the exported asset
-    xml_geom.set("mesh", "mesh_" + mesh_data_name)
+    xml_geom.set("mesh", "mesh_" + obj.data.name)
 
 def export_options(context, xml_root): # TODO add lower priority options here and to the UI
     xml_compiler = SubElement(xml_root, "compiler")
