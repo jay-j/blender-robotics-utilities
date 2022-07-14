@@ -116,7 +116,7 @@ def export_pretty(context, xml_root):
 actuator_list = []
 equality_list = []
 sensor_list = []
-meshes_exported = []
+meshes_exported = {} # dictionary Class_Mesh : Exported Name
 nuserdata_estimate = 0
 
 def print_tf_tree(obj, level):
@@ -258,8 +258,22 @@ class MJCFBuildTreeOperator(bpy.types.Operator):
 
 def export_stl(context, obj, xml_geom, xml_asset):  
 
-    if meshes_exported.count(obj.data) == 0:
+    # if meshes_exported.count(obj.data) == 0:
+    if obj.data not in meshes_exported.keys():
         print(f"Exporting new STL mesh {obj.data.name} for object {obj.name}")
+        
+        mesh_export_name = obj.data.name
+        
+        # if that mesh name has already been exported with a different object
+        if mesh_export_name in meshes_exported.values():
+            print("[WARNING] Detected mesh name collision! Will auto-resolve, but there should be no expectation of stability in the resulting names.")
+            mesh_export_name_prefix = mesh_export_name
+            number = 0
+            while mesh_export_name in meshes_exported.values():
+                mesh_export_name = mesh_export_name_prefix + repr(number)
+                number += 1
+            print(f"Will export using name {mesh_export_name}")
+            
 
         # store the active object so it can be restored later
         sel_obj = bpy.context.view_layer.objects.active
@@ -273,7 +287,7 @@ def export_stl(context, obj, xml_geom, xml_asset):
         bpy.ops.object.select_all(action='DESELECT')
         obj.select_set(True)
 
-        bpy.ops.export_mesh.stl(filepath=bpy.path.abspath('//mesh_stl/' + obj.data.name + '.stl'), use_selection=True, global_space=obj.matrix_world, ascii=False)
+        bpy.ops.export_mesh.stl(filepath=bpy.path.abspath('//mesh_stl/' + mesh_export_name + '.stl'), use_selection=True, global_space=obj.matrix_world, ascii=False)
 
         # restore selection
         bpy.ops.object.select_all(action='DESELECT')
@@ -281,19 +295,19 @@ def export_stl(context, obj, xml_geom, xml_asset):
 
         # if new asset have to do this and run the export
         xml_stl = SubElement(xml_asset, "mesh")
-        xml_stl.set("name", "mesh_" + obj.data.name)
-        xml_stl.set("file", "mesh_stl/" + obj.data.name + ".stl")
+        xml_stl.set("name", "mesh_" + mesh_export_name )
+        xml_stl.set("file", "mesh_stl/" + mesh_export_name  + ".stl")
 
-        meshes_exported.append(obj.data)
+        meshes_exported[obj.data] = mesh_export_name
     else:
-        print(f"Object {obj.name} using already exported mesh {obj.data.name}")
+        print(f"Object {obj.name} using already exported mesh {meshes_exported[obj.data]}")
 
         # check if a different mesh with the same name (e.g. from a linked file) is present and COULD be a problem TODO the right way to check???
         # if bpy.data.meshes.keys().count(mesh_data_name) > 1:
         #     assert False, f"[ERROR] file has more than one mesh named {mesh_data_name}, being conservative and terminating"
 
     # assign geometry to use the exported asset
-    xml_geom.set("mesh", "mesh_" + obj.data.name)
+    xml_geom.set("mesh", "mesh_" + meshes_exported[obj.data])
 
 def export_options(context, xml_root): # TODO add lower priority options here and to the UI
     xml_compiler = SubElement(xml_root, "compiler")
