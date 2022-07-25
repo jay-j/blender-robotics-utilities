@@ -42,6 +42,8 @@ import gpu
 from gpu_extras.batch import batch_for_shader
 from bpy.app.handlers import persistent
 
+# TODO don't draw tree elements for objects that are not visible?
+# TODO How to draw tree for assembly? maybe subassembly trees should be drawn faded?
 class TFDisplay():
     def __init__(self):
         self.draw_handler = None
@@ -70,7 +72,7 @@ class TFDisplay():
 
     @persistent
     def tf_display_update(self, scene, unknown):
-        print("tf display update: ")
+        # print("tf display update: ")
         # TODO does this cause infinite buildup of draw handler calls? that seems bad?
         # The @persistent decorator is used to keep the handler running across multiple files. 
         # If this function is not marked as persistent, then the add-on register() function would 
@@ -302,10 +304,6 @@ def export_stl(context, obj, xml_geom, xml_asset):
     else:
         print(f"Object {obj.name} using already exported mesh {meshes_exported[obj.data]}")
 
-        # check if a different mesh with the same name (e.g. from a linked file) is present and COULD be a problem TODO the right way to check???
-        # if bpy.data.meshes.keys().count(mesh_data_name) > 1:
-        #     assert False, f"[ERROR] file has more than one mesh named {mesh_data_name}, being conservative and terminating"
-
     # assign geometry to use the exported asset
     xml_geom.set("mesh", "mesh_" + meshes_exported[obj.data])
 
@@ -478,8 +476,18 @@ def export_mesh_geom(context, obj, xml, xml_asset, visualization_only=False):
 
     export_stl(context, obj, xml_geom, xml_asset)
 
-# exports xml data for a link entity
-def export_entity(context, obj, xml_model, body_is_root, xml_asset):
+class AssemblyContext:
+    def __init__(self, name, tf):
+        self.name = name
+        self.tf = tf
+
+def export_entity(context, obj, xml_model, xml_asset, assembly_context, body_is_root=False):
+    """Recursively export an entity. 
+       Inputs: context      : The Blender bpy.context, needed by some functions.
+               obj          : The current Blender object being exported; advances with recursion.
+               xml_model    : The XML tag storing current position in kinematic tree; advances with recursion.
+               xml_asset    : The XML tag storing MJCF assets (meshes). Does not advance with recusion.
+               body_is_root : Special logic to allow arbitrary objects to serve as root."""
 
     if not body_is_root:
         tf = obj.sk_parent_entity.matrix_world.inverted_safe() @ obj.matrix_world
@@ -576,7 +584,7 @@ def export_entity(context, obj, xml_model, body_is_root, xml_asset):
             xml_entity.set("armature", repr(obj.sk_joint_armature))
 
         for j, child in obj['sk_child_entity_list'].items():
-            export_entity(context, child, xml_model, False, xml_asset)
+            export_entity(context, child, xml_model, xml_asset, assembly_context)
 
     elif obj.enum_sk_type == "body":
         print(f"Exporting {obj.name} as BODY")
@@ -600,14 +608,33 @@ def export_entity(context, obj, xml_model, body_is_root, xml_asset):
                 export_mesh_geom(context, obj, xml_entity, xml_asset, visualization_only=True)
 
         for j, child in obj['sk_child_entity_list'].items():
-            export_entity(context, child, xml_entity, False, xml_asset)
+            export_entity(context, child, xml_entity, xml_asset, assembly_context)
 
     elif obj.enum_sk_type == "camera":
         export_camera(context, obj, xml_model)
+        
+    elif obj.enum_sk_type == "subassembly":
+        print(f"Entering export for subassembly {obj.name} of {obj.instance_collection}")
+        # TODO lots here.. have to pass on a stack of subassembly coordinate systems
+        new_name = assembly_context[-1].name + obj.name
+        new_tf   = assembly_context[-1].tf @ obj.matrix_world
+        assembly_context.append(AssemblyContext(name=new_name, tf=new_tf))
+        
+        # now dive inside that subassembly. have to figure out which object is root inside the subassembly!
+        # just pass on the same xml_entity to expand the subassembly into place
+        # export_entity(context, child??, xml_entity, xml_asset, assembly_context)
+        # TODO re-enable the above line!!!
+        
+        # tf = obj.matrix_world
+        # then within the subassembly
+        # [actual world coordinates of the subassembly object]  = tf * asm.instance_collection.objects[""].matrix_world
+        
+        # TODO need to use the assembly context for names and tf's within the rest of this system
 
     else:
         print(f"[ERROR] something has gone wrong exporting {obj.name}!")
         assert False, "Object type not recognized for MJCF export"
+
 
 # follows an already-explored tree to add links and joints to the xml data
 def export_tree(context, root):
@@ -621,12 +648,15 @@ def export_tree(context, root):
     export_options(context, xml_root)
     export_defaults()
 
+    # XML container for all the assets. For now this is just meshes, but MJCF supports additional types.
     xml_asset = SubElement(xml_root, "asset")
 
+    # XML container for the kinematic structure; bodies, geoms, joints, sites.
     xml_worldbody = SubElement(xml_root, "worldbody")
 
     # explore the kinematic tree from root (selected object) down
-    export_entity(context, root, xml_worldbody, True, xml_asset)
+    assembly_context = [AssemblyContext(name="", tf=root.matrix_world)]
+    export_entity(context, root, xml_worldbody, xml_asset, assembly_context, body_is_root=True)
 
     # TODO lights inside worldbody
     xml_light_tmp = SubElement(xml_worldbody, "light")
@@ -741,6 +771,10 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
 
         row = layout.row()
         row.prop(obj, 'enum_sk_type', text='Type', expand=True)
+        # row.prop_search(obj, 'enum_sk_type') 
+        # prop_with_menu() needs to be given a menu
+        
+        # TODO make a more sensible organization
 
         if obj.enum_sk_type == 'body':
 
@@ -993,6 +1027,27 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
                 if obj.sk_camera_mode == "targetbody" or obj.sk_camera_mode == "targetbodycom":
                     row = layout.row()
                     row.prop(obj, "sk_camera_target", text="Target")
+                    
+        if obj.enum_sk_type == "subassembly":
+            if obj.type != "EMPTY":
+                row = layout.row()
+                row.label(text="ERROR! Subassemblies must be placed using an empty-type object.")
+
+            elif obj.instance_collection == None:
+                row = layout.row()
+                row.prop(obj, "instance_collection", text="Subassembly collection")
+                row = layout.row()
+                row.label(text="ERROR! Subassemblies must be collection instances.")
+                
+            else:
+                row = layout.row()
+                row.prop(obj, "instance_collection", text="Subassembly collection")
+                row = layout.row()
+                row.prop(obj, "sk_parent_entity", text="Parent Body")
+                
+                
+            
+                
 
 class SimpleKinematicsPanelQuickAccess(bpy.types.Panel):
     bl_idname = "OBJECT_PT_sk_quickaccess"
@@ -1088,7 +1143,8 @@ enum_sk_type = [
     ('equality', 'equality', 'equality'),
     3*("site",),
     3*("sensor",),
-    3*("camera",)
+    3*("camera",),
+    3*("subassembly",),
     ]
 
 enum_geom_type_options = [
