@@ -137,6 +137,7 @@ def get_joints(obj):
     assert len(joints) < 2, "too many child joints detected in TF tree build"
     return joints
 
+# TODO work with the subassembly types?
 def build_kinematic_tree(self, context):
     # too much of an assumption that root_previous exists?
     try:
@@ -159,14 +160,15 @@ def build_kinematic_tree(self, context):
 
     # find the tree as needed by MJCF XML format
     for obj in context.scene.objects:
-        if (["body", "joint", "geom", "site", "camera", "sensor"].count(obj.enum_sk_type) > 0 ) and not( obj.sk_parent_entity == None):
+        if (["subassembly", "body", "joint", "geom", "site", "camera", "sensor"].count(obj.enum_sk_type) > 0 ) and not( obj.sk_parent_entity == None):
 
             parent = obj.sk_parent_entity
-            if obj.enum_sk_type == "body":
-                # MJCF XML organized by bodies; recursively search until the parent body is found
+            print(f"Looking at object {obj.name} and its parent {parent.name}")
+            if obj.enum_sk_type == "body" and parent.enum_sk_type != "root": 
+                # MJCF XML organized by bodies; recursively search past joints until the parent body is found
                 attempts = 0
                 attempt_limit = 512
-                while parent.enum_sk_type != "body":
+                while parent.enum_sk_type != "body": 
                     parent = parent.sk_parent_entity
                     attempts += 1
                     assert attempts < attempt_limit, "Some tangle in the kinematic tree."
@@ -195,7 +197,8 @@ def build_kinematic_tree(self, context):
             print(f"append sensor {obj.name}")
             sensor_list.append(obj)
     
-    # find the boring kinematic tree
+    # find the boring kinematic tree # TODO restore this!
+    return
     for obj in context.scene.objects:
         if obj.sk_parent_entity != None:
 
@@ -408,6 +411,7 @@ def export_actuators(context, xml):
             xml_size = xml.findall("size")
             xml_size[0].set("nuser_actuator", "10") # 10 static properties (gains) per actuator
 
+
 def export_equalities(context, xml):
     xml_equality_list = SubElement(xml, "equality")
     for eq in equality_list:
@@ -457,9 +461,9 @@ def export_equalities(context, xml):
             xml_eq.set("solimp", f"{eq.sk_solimp[0]} {eq.sk_solimp[1]} {eq.sk_solimp[2]}")
 
 
-def export_mesh_geom(context, obj, xml, xml_asset, visualization_only=False):
+def export_mesh_geom(context, obj, export_name, xml, xml_asset, visualization_only=False):
     xml_geom = SubElement(xml, "geom")
-    xml_geom.set("name", obj.name)
+    xml_geom.set("name", export_name)
     xml_geom.set("type", "mesh")
     xml_geom.set("pos", "0 0 0")
     xml_geom.set("quat", "1 0 0 0")
@@ -476,31 +480,52 @@ def export_mesh_geom(context, obj, xml, xml_asset, visualization_only=False):
 
     export_stl(context, obj, xml_geom, xml_asset)
 
+
+# don't get lost when expanding subassemblies
 class AssemblyContext:
     def __init__(self, name, tf):
         self.name = name
         self.tf = tf
 
-def export_entity(context, obj, xml_model, xml_asset, assembly_context, body_is_root=False):
-    """Recursively export an entity. 
-       Inputs: context      : The Blender bpy.context, needed by some functions.
-               obj          : The current Blender object being exported; advances with recursion.
-               xml_model    : The XML tag storing current position in kinematic tree; advances with recursion.
-               xml_asset    : The XML tag storing MJCF assets (meshes). Does not advance with recusion.
-               body_is_root : Special logic to allow arbitrary objects to serve as root."""
 
-    if not body_is_root:
+def export_entity(context, obj, xml_model, xml_asset, assembly_context, body_is_world_root=False):
+    """
+    Recursively export an entity. 
+    Inputs: context            : The Blender bpy.context, needed by some functions.
+            obj                : The current Blender object being exported; advances with recursion.
+            xml_model          : The XML tag storing current position in kinematic tree; advances with recursion.
+            xml_asset          : The XML tag storing MJCF assets (meshes). Does not advance with recusion.
+            body_is_world_root : Special logic to allow arbitrary objects to serve as root.
+    """
+
+    # set transform relative to parent EXCEPT for the world root object
+    if obj.enum_sk_type != "root":
+        # tf within the local subassembly coordinates
         tf = obj.sk_parent_entity.matrix_world.inverted_safe() @ obj.matrix_world
+        
+        # if the first thing in a subassembly, augment transform by transform to above
+        if obj.sk_parent_entity.enum_sk_type == "root":
+            tf = assembly_context[-1].tf @ tf
+            print(f"{obj.name} is the first object in {assembly_context[-1].name}. The resulting tf is:")
+            print(tf)
+        
+        # extract position and orientation relative to parent from the transform matrix
         pos = repr(tf.translation[0]) + " " + repr(tf.translation[1]) + " " + repr(tf.translation[2])
-
-        # relative to the parent
         q = tf.to_quaternion()
         quat = repr(q[0]) + " " + repr(q[1]) + " " + repr(q[2]) + " " + repr(q[3])
+        
+        export_name = assembly_context[-1].name+obj.name
 
-    if obj.enum_sk_type == "geom":
-        print(f"Exporting {obj.name} as GEOM")
+
+    # world root OR a subassembly root, expand its children
+    if obj.enum_sk_type == "root":
+        for j, child in obj['sk_child_entity_list'].items():
+            export_entity(context, child, xml_model, xml_asset, assembly_context)
+
+    elif obj.enum_sk_type == "geom":
+        print(f"Exporting {export_name} as GEOM")
         xml_entity = SubElement(xml_model, "geom")
-        xml_entity.set("name", obj.name)
+        xml_entity.set("name", export_name)
         xml_entity.set("type", obj.sk_geom_type)
         xml_entity.set("size", calculate_geom_size_str(obj) )
 
@@ -521,18 +546,18 @@ def export_entity(context, obj, xml_model, xml_asset, assembly_context, body_is_
     elif obj.enum_sk_type == "site" or obj.enum_sk_type == "sensor":
         print(f"Exporting {obj.name} as SITE")
         xml_entity = SubElement(xml_model, "site")
-        xml_entity.set("name", obj.name)
+        xml_entity.set("name", export_name)
         xml_entity.set("pos", pos)
         xml_entity.set("quat", quat)
 
     elif obj.enum_sk_type == "joint":
-        print(f"Exporting {obj.name} as JOINT")
+        print(f"Exporting {export_name} as JOINT")
         print(f"   this has sk_parent_entity: {obj.sk_parent_entity}")
         xml_entity = SubElement(xml_model, "joint")
-        xml_entity.set("name", obj.name)
+        xml_entity.set("name", export_name)
         xml_entity.set("type", obj.enum_joint_type)
 
-
+        # find the first upstream body
         parent_tmp = obj.sk_parent_entity
         attempts = 0
         while parent_tmp.enum_sk_type != "body":
@@ -587,25 +612,19 @@ def export_entity(context, obj, xml_model, xml_asset, assembly_context, body_is_
             export_entity(context, child, xml_model, xml_asset, assembly_context)
 
     elif obj.enum_sk_type == "body":
-        print(f"Exporting {obj.name} as BODY")
+        print(f"Exporting {export_name} as BODY")
 
-        if body_is_root:
-            # just worldbody with no info
-            # this is fed in from up above
-            # TODO how to bring in better the world geometry body?
-            xml_entity = xml_model
+        xml_entity = SubElement(xml_model, 'body')
+        xml_entity.set("name", export_name)
+
+        xml_entity.set("pos", pos)
+        xml_entity.set("quat", quat)
+
+        # always export a STL mesh, but only let it be the physics geom
+        if not obj.sk_use_primitive_geom:
+            export_mesh_geom(context, obj, export_name, xml_entity, xml_asset, visualization_only=False)
         else:
-            xml_entity = SubElement(xml_model, 'body')
-            xml_entity.set("name", obj.name)
-
-            xml_entity.set("pos", pos)
-            xml_entity.set("quat", quat)
-
-            # always export a STL mesh, but only let it be the physics geom
-            if not obj.sk_use_primitive_geom:
-                export_mesh_geom(context, obj, xml_entity, xml_asset, visualization_only=False)
-            else:
-                export_mesh_geom(context, obj, xml_entity, xml_asset, visualization_only=True)
+            export_mesh_geom(context, obj, export_name, xml_entity, xml_asset, visualization_only=True)
 
         for j, child in obj['sk_child_entity_list'].items():
             export_entity(context, child, xml_entity, xml_asset, assembly_context)
@@ -614,23 +633,31 @@ def export_entity(context, obj, xml_model, xml_asset, assembly_context, body_is_
         export_camera(context, obj, xml_model)
         
     elif obj.enum_sk_type == "subassembly":
-        print(f"Entering export for subassembly {obj.name} of {obj.instance_collection}")
-        # TODO lots here.. have to pass on a stack of subassembly coordinate systems
-        new_name = assembly_context[-1].name + obj.name
-        new_tf   = assembly_context[-1].tf @ obj.matrix_world
+        # Since the MJCF kinematic tree is built on relative poses, assembly_context needs to store the partial relative pose.
+        # The portion from the outside parent object, to the subassembly object, since this will be unknown once inside the subassembly.
+        print(f"Entering export for subassembly {export_name} of {obj.instance_collection}")
+        new_name = assembly_context[-1].name + export_name + "_"
+        # new_tf   = assembly_context[-1].tf @ obj.matrix_world
+        new_tf = tf
         assembly_context.append(AssemblyContext(name=new_name, tf=new_tf))
         
-        # now dive inside that subassembly. have to figure out which object is root inside the subassembly!
-        # just pass on the same xml_entity to expand the subassembly into place
-        # export_entity(context, child??, xml_entity, xml_asset, assembly_context)
-        # TODO re-enable the above line!!!
+        print("Going into a subassembly. Top of the assembly_context stack is now:", assembly_context[-1].name)
+        print(assembly_context[-1].tf)
         
-        # tf = obj.matrix_world
-        # then within the subassembly
-        # [actual world coordinates of the subassembly object]  = tf * asm.instance_collection.objects[""].matrix_world
-        
-        # TODO need to use the assembly context for names and tf's within the rest of this system
+        # find where the subassembly root is
+        roots_found = 0
+        for child in obj.instance_collection.objects:
+            if child.enum_sk_type == "root":
+                print(f"   subassembly root object found: {child.name}")
+                xml_entity = export_entity(context, child, xml_model, xml_asset, assembly_context)
+                roots_found += 1
+        assert roots_found == 1, "Attempt to parse subassembly failed, incorrect number of roots found."
 
+        # now export children of the subassembly that are not inside the subassembly
+        assembly_context.pop()
+        for j, child in obj['sk_child_entity_list'].items():
+            export_entity(context, child, xml_entity, xml_asset, assembly_context)
+        
     else:
         print(f"[ERROR] something has gone wrong exporting {obj.name}!")
         assert False, "Object type not recognized for MJCF export"
@@ -656,7 +683,7 @@ def export_tree(context, root):
 
     # explore the kinematic tree from root (selected object) down
     assembly_context = [AssemblyContext(name="", tf=root.matrix_world)]
-    export_entity(context, root, xml_worldbody, xml_asset, assembly_context, body_is_root=True)
+    export_entity(context, root, xml_worldbody, xml_asset, assembly_context, body_is_world_root=True)
 
     # TODO lights inside worldbody
     xml_light_tmp = SubElement(xml_worldbody, "light")
@@ -760,7 +787,7 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
         layout = self.layout
         obj = context.object
 
-        if obj.enum_sk_type == 'body':
+        if obj.enum_sk_type == "root":
             row = layout.row()
             row.prop(context.scene, "robot_name", text="Robot Name")
 
@@ -1137,14 +1164,15 @@ enum_joint_axis_options = [
     ]
 
 enum_sk_type = [
-    ('body', 'body', 'body'),
-    ('joint', 'joint', 'joint'),
-    ('geom', 'geom', 'geom'),
-    ('equality', 'equality', 'equality'),
+    ("root","root", "Kinematic root frame; use for world origin and subassembly roots."),
+    ("body", "body", "body"),
+    ("joint","joint", "joint"),
+    ("geom", "geom", "Idealized geometry to represent collision and inertial properties."),
+    ("equality", "equality", "Additional constraints outside the serial kinematic tree; such as for creating mechanisms with closed-loop kinematics."),
     3*("site",),
     3*("sensor",),
     3*("camera",),
-    3*("subassembly",),
+    ("subassembly", "subassembly", "Collection instance describing a subassembly."),
     ]
 
 enum_geom_type_options = [
