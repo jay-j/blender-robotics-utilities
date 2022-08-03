@@ -283,10 +283,18 @@ def export_stl(context, obj, xml_geom, xml_asset):
         # store the active object so it can be restored later
         sel_obj = bpy.context.view_layer.objects.active
 
-        # TODO find a way for collection instances to serve as single links
         if obj.type != 'MESH':
             print("ERROR object", obj.name, "is not a mesh object")
             return
+
+        # temporarily unhide the collection this object is in 
+        layer_collection_tmp = None
+        if obj not in context.visible_objects:
+            collection = obj.users_collection[0] # guess showing it once is enough
+            for layer_collection in context.view_layer.layer_collection.children:
+                if layer_collection.collection == collection:
+                    layer_collection.exclude = False
+                    layer_collection_tmp = layer_collection
 
         # select only the single mesh to be exported
         bpy.ops.object.select_all(action='DESELECT')
@@ -294,9 +302,11 @@ def export_stl(context, obj, xml_geom, xml_asset):
 
         bpy.ops.export_mesh.stl(filepath=bpy.path.abspath('//mesh_stl/' + mesh_export_name + '.stl'), use_selection=True, global_space=obj.matrix_world, ascii=False)
 
-        # restore selection
+        # restore selection and layer_collection.exclude state
         bpy.ops.object.select_all(action='DESELECT')
         sel_obj.select_set(True)
+        if layer_collection_tmp is not None:
+            layer_collection_tmp.exclude = True
 
         # if new asset have to do this and run the export
         xml_stl = SubElement(xml_asset, "mesh")
@@ -802,7 +812,6 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
         # prop_with_menu() needs to be given a menu
         
         # TODO make a more sensible organization
-
         if obj.enum_sk_type == 'body':
 
             row = layout.row()
@@ -1072,8 +1081,10 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
                 row = layout.row()
                 row.prop(obj, "sk_parent_entity", text="Parent Body")
                 
+                if obj.sk_parent_entity.enum_sk_type != "body":
+                    row = layout.row()
+                    row.label(text="ERROR! Subassemblies must be children of a body.")
                 
-            
                 
 
 class SimpleKinematicsPanelQuickAccess(bpy.types.Panel):
@@ -1164,7 +1175,7 @@ enum_joint_axis_options = [
     ]
 
 enum_sk_type = [
-    ("root","root", "Kinematic root frame; use for world origin and subassembly roots."),
+    ("root","root", "Kinematic root frame; use for world origin and marking root within a subassembly."),
     ("body", "body", "body"),
     ("joint","joint", "joint"),
     ("geom", "geom", "Idealized geometry to represent collision and inertial properties."),
