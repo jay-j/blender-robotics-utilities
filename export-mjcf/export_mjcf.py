@@ -324,6 +324,8 @@ def export_options(context, xml_root): # TODO add lower priority options here an
 
     xml_flags = SubElement(xml_options, "flag")
     xml_flags.set("sensornoise", "enable")
+    if context.scene.mjcf_option_energy:
+        xml_flags.set("energy","enable")
 
     if context.scene.mjcf_flag_contactparam_override:
         xml_options.set("o_solref", f"{context.scene.mjcf_option_osolref[0]:.4} {context.scene.mjcf_option_osolref[1]:.4}")
@@ -1066,6 +1068,8 @@ class SimpleKinematicsPanelMJCFOptions(bpy.types.Panel):
         row.prop(context.scene, "mjcf_option_njmax", text="Maximum constraints" )
         row = layout.row()
         row.prop(context.scene, "mjcf_option_nuserdata", text="User data variables")
+        row = layout.row()
+        row.prop(context.scene, "mjcf_option_energy", text="Compute energy")
 
 
 enum_joint_type_options = [
@@ -1248,6 +1252,7 @@ def register():
     bpy.types.Scene.mjcf_option_nconmax = bpy.props.IntProperty(name="mjcf_option_nconmax", description="Maximum number of contacts. -1 to automatically guess", default=-1)
     bpy.types.Scene.mjcf_option_njmax = bpy.props.IntProperty(name="mjcf_option_njmax", description="Maximum number of scalar constraints. -1 to automatically guess", default=-1)
     bpy.types.Scene.mjcf_option_nuserdata = bpy.props.IntProperty(name="mjcf_option_nuserdata", description="Additional custom user data items", default=100)
+    bpy.types.Scene.mjcf_option_energy = bpy.props.BoolProperty(name="mjcf_option_energy", description="When enabled, Mujoco will compute system potential and kinetic energy", default=False)
 
     # Add the user interface elements
     bpy.utils.register_class(MJCFBuildTreeOperator)
