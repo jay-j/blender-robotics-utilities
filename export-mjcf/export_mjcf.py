@@ -432,11 +432,11 @@ def export_equalities(context, xml):
             if not eq.sk_equality_entity2 == None:
                 xml_eq.set("body2", eq.sk_equality_entity2.name)
 
-            tf = eq.sk_equality_entity1.matrix_world.inverted_safe() @ eq.matrix_world
+            tf = eq.sk_equality_entity2.matrix_world.inverted_safe() @ eq.matrix_world
             pos = repr(tf.translation[0]) + " " + repr(tf.translation[1]) + " " + repr(tf.translation[2])
             q = tf.to_quaternion()
             quat = repr(q[0]) + " " + repr(q[1]) + " " + repr(q[2]) + " " + repr(q[3])
-            xml_eq.set("relpose", pos + " " + quat)
+            xml_eq.set("anchor", pos)
 
             if eq.sk_solref_custom:
                 xml_eq.set("solref", f"{eq.sk_solref[0]} {eq.sk_solref[1]}")
