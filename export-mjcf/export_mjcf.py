@@ -46,7 +46,8 @@ class TFDisplay():
     def __init__(self):
         self.draw_handler = None
         self.dpupdate = None
-        self.shader = gpu.shader.from_builtin('3D_SMOOTH_COLOR')
+        # self.shader = gpu.shader.from_builtin('3D_SMOOTH_COLOR') # for Blender 3.x
+        self.shader = gpu.shader.from_builtin('POLYLINE_SMOOTH_COLOR') # for Blender 4.x
 
     def tf_display_draw(self, scene):
         verts = []
@@ -70,7 +71,7 @@ class TFDisplay():
 
     @persistent
     def tf_display_update(self, scene, unknown):
-        print("tf display update: ")
+        # print("tf display update: ")
         # TODO does this cause infinite buildup of draw handler calls? that seems bad?
         # The @persistent decorator is used to keep the handler running across multiple files. 
         # If this function is not marked as persistent, then the add-on register() function would 
