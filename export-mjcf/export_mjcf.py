@@ -36,6 +36,9 @@ from xml.etree.ElementTree import Element, SubElement, Comment, tostring
 from xml.dom import minidom
 # https://pymotw.com/2/xml/etree/ElementTree/create.html
 
+# A copy of the legacy STL exporter that is used by this addon. Expect stl_export.py in the same directory.
+import stl_export
+
 ### live tree drawing stuff
 import mathutils 
 import gpu
@@ -288,7 +291,7 @@ def export_stl(context, obj, xml_geom, xml_asset):
         bpy.ops.object.select_all(action='DESELECT')
         obj.select_set(True)
 
-        bpy.ops.export_mesh.stl(filepath=bpy.path.abspath('//mesh_stl/' + mesh_export_name + '.stl'), use_selection=True, global_space=obj.matrix_world, ascii=False)
+        bpy.ops.export_mesh.stl_legacy(filepath=bpy.path.abspath('//mesh_stl/' + mesh_export_name + '.stl'), use_selection=True, global_space=obj.matrix_world, ascii=False)
 
         # restore selection
         bpy.ops.object.select_all(action='DESELECT')
@@ -1163,6 +1166,8 @@ mjcf_options_solver = [
 ]
 
 def register():
+    stl_export.register()
+    
     # step angle for UI drags
     step_angle_ui = 1500 # about 15 degrees
     step_lin_ui = 10 # 0.1m
@@ -1264,6 +1269,7 @@ def register():
 
 
 def unregister():
+    stl_export.unregister()
     bpy.utils.unregister_class(MJCFBuildTreeOperator)
     bpy.utils.unregister_class(MJCFExportOperator)
     bpy.utils.unregister_class(SimpleKinematicsJointPanel)
