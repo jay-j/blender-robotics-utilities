@@ -2,8 +2,8 @@ bl_info = {
     "name": "Export MJCF",
     "description": "Tool to define MJCF properties and export",
     "author": "Jay Jasper",
-    "version": (0, 3),
-    "blender": (3, 2, 0),
+    "version": (0, 4),
+    "blender": (4, 2, 0),
     "location": "View3D > Export MJCF Panel",
     "warning": "",
     "category": "Import-Export"
@@ -327,7 +327,6 @@ def export_options(context, xml_root): # TODO add lower priority options here an
     xml_options.set("solver", context.scene.mjcf_option_solver)
 
     xml_flags = SubElement(xml_options, "flag")
-    xml_flags.set("sensornoise", "enable")
     if context.scene.mjcf_option_energy:
         xml_flags.set("energy","enable")
 
