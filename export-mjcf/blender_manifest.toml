@@ -1,0 +1,19 @@
+schema_version = "1.0.0"
+
+id = "export_mjcf"
+version = "0.5.0"
+name = "Export MJCF"
+tagline = "Export XML MJCF files for MuJoCo"
+maintainer = "Jay Jasper <jay-j@github.com>"
+type = "add-on"
+tags = ["Import-Export"]
+blender_version_min = "4.2.0"
+
+
+license = [
+  "SPDX:GPL-3.0-or-later",
+]
+
+
+[permissions]
+files = "Export MJCF files to disk"

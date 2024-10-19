@@ -1,14 +1,3 @@
-bl_info = {
-    "name": "Export MJCF",
-    "description": "Tool to define MJCF properties and export",
-    "author": "Jay Jasper",
-    "version": (0, 4),
-    "blender": (4, 2, 0),
-    "location": "View3D > Export MJCF Panel",
-    "warning": "",
-    "category": "Import-Export"
-}
-
 ### docs; model structure
 # any mesh, any shape
 # name them nicely (link_xx)
@@ -37,7 +26,7 @@ from xml.dom import minidom
 # https://pymotw.com/2/xml/etree/ElementTree/create.html
 
 # A copy of the legacy STL exporter that is used by this addon. Expect stl_export.py in the same directory.
-import stl_export
+from . import stl_export
 
 ### live tree drawing stuff
 import mathutils 
@@ -1165,7 +1154,7 @@ mjcf_options_solver = [
 ]
 
 def register():
-    stl_export.register()
+    # stl_export.register()
     
     # step angle for UI drags
     step_angle_ui = 1500 # about 15 degrees
@@ -1268,7 +1257,7 @@ def register():
 
 
 def unregister():
-    stl_export.unregister()
+    # stl_export.unregister()
     bpy.utils.unregister_class(MJCFBuildTreeOperator)
     bpy.utils.unregister_class(MJCFExportOperator)
     bpy.utils.unregister_class(SimpleKinematicsJointPanel)
