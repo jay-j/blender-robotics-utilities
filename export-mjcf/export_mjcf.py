@@ -115,7 +115,7 @@ nuserdata_estimate = 0
 def print_tf_tree(obj, level):
     spaces = level*"   "
     for i, child in obj['tf_tree_children'].items():
-        print(f"{spaces}{child.name}")
+        print(f"{spaces}{child.name}  {child}")
         print_tf_tree(child, level+1)
 
 # joint is child from MJCF's perspective - can only have one
@@ -484,7 +484,7 @@ def export_entity(context, obj, xml_model, body_is_root, xml_asset):
         quat = repr(q[0]) + " " + repr(q[1]) + " " + repr(q[2]) + " " + repr(q[3])
 
     if obj.enum_sk_type == "geom":
-        print(f"Exporting {obj.name} as GEOM")
+        print(f"Exporting {obj.name} as GEOM {obj}")
         xml_entity = SubElement(xml_model, "geom")
         xml_entity.set("name", obj.name)
         xml_entity.set("type", obj.sk_geom_type)
@@ -505,14 +505,14 @@ def export_entity(context, obj, xml_model, body_is_root, xml_asset):
             xml_entity.set("solimp", f"{obj.sk_solimp[0]} {obj.sk_solimp[1]} {obj.sk_solimp[2]}")
 
     elif obj.enum_sk_type == "site" or obj.enum_sk_type == "sensor":
-        print(f"Exporting {obj.name} as SITE")
+        print(f"Exporting {obj.name} as SITE {obj}")
         xml_entity = SubElement(xml_model, "site")
         xml_entity.set("name", obj.name)
         xml_entity.set("pos", pos)
         xml_entity.set("quat", quat)
 
     elif obj.enum_sk_type == "joint":
-        print(f"Exporting {obj.name} as JOINT")
+        print(f"Exporting {obj.name} as JOINT {obj}")
         print(f"   this has sk_parent_entity: {obj.sk_parent_entity}")
         xml_entity = SubElement(xml_model, "joint")
         xml_entity.set("name", obj.name)
@@ -573,7 +573,7 @@ def export_entity(context, obj, xml_model, body_is_root, xml_asset):
             export_entity(context, child, xml_model, False, xml_asset)
 
     elif obj.enum_sk_type == "body":
-        print(f"Exporting {obj.name} as BODY")
+        print(f"Exporting {obj.name} as BODY {obj}")
 
         if body_is_root:
             # just worldbody with no info
@@ -1154,7 +1154,6 @@ mjcf_options_solver = [
 ]
 
 def register():
-    # stl_export.register()
     
     # step angle for UI drags
     step_angle_ui = 1500 # about 15 degrees
@@ -1168,7 +1167,7 @@ def register():
     # more general properties
     bpy.types.Scene.kinematic_tree_display = bpy.props.BoolProperty(name="kinematic_tree_display", default=True, update=None)
     bpy.types.Scene.kinematic_tree_autogen = bpy.props.BoolProperty(name="kinematic_tree_autogen", default=True)
-    bpy.types.Object.sk_parent_entity = bpy.props.PointerProperty(type=bpy.types.Object, name="sk_parent_entity", description="Simple Kinematics Parent Entity", update=build_kinematic_tree_auto)
+    bpy.types.Object.sk_parent_entity = bpy.props.PointerProperty(type=bpy.types.Object, name="sk_parent_entity", description="Simple Kinematics Parent Entity", update=build_kinematic_tree_auto, override={"LIBRARY_OVERRIDABLE"})
     bpy.types.Object.sk_solref = bpy.props.FloatVectorProperty(name="sk_solref", size=2, default=[0.0005, 1], precision=4, description="(timeconst, dampratio). Should keep [time constant] > 2*[simulation stpe time]")
     bpy.types.Object.sk_solref_custom = bpy.props.BoolProperty(name="sk_solref_custom", default=False)
     bpy.types.Object.sk_solimp = bpy.props.FloatVectorProperty(name="sk_solimp", size=3, default=[2, 1.2, 0.001], precision=4)
