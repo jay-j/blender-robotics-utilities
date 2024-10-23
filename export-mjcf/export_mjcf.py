@@ -17,8 +17,7 @@
 import bpy
 import time
 from math import pi
-from mathutils import Vector
-from math import pi
+from mathutils import Vector, Matrix, Quaternion
 import os
 from xml.etree import ElementTree
 from xml.etree.ElementTree import Element, SubElement, Comment, tostring
@@ -248,11 +247,20 @@ class MJCFBuildTreeOperator(bpy.types.Operator):
 
         return {'FINISHED'}
 
+class UniqueMesh:
+    data = None
+    scale = 0
+    def __init__(self, obj):
+        self.data = obj.data
+        self.scale = obj.matrix_world.to_scale()
 
 def export_stl(context, obj, xml_geom, xml_asset):  
 
+    unique_mesh = UniqueMesh(obj)
+
     # if meshes_exported.count(obj.data) == 0:
-    if obj.data not in meshes_exported.keys():
+    # if obj.data not in meshes_exported.keys():
+    if unique_mesh not in meshes_exported.keys():
         print(f"Exporting new STL mesh {obj.data.name} for object {obj.name}")
         
         mesh_export_name = obj.data.name
@@ -291,16 +299,16 @@ def export_stl(context, obj, xml_geom, xml_asset):
         xml_stl.set("name", "mesh_" + mesh_export_name )
         xml_stl.set("file", "mesh_stl/" + mesh_export_name  + ".stl")
 
-        meshes_exported[obj.data] = mesh_export_name
+        meshes_exported[unique_mesh] = mesh_export_name
     else:
-        print(f"Object {obj.name} using already exported mesh {meshes_exported[obj.data]}")
+        print(f"Object {obj.name} using already exported mesh {meshes_exported[unique_mesh]}")
 
         # check if a different mesh with the same name (e.g. from a linked file) is present and COULD be a problem TODO the right way to check???
         # if bpy.data.meshes.keys().count(mesh_data_name) > 1:
         #     assert False, f"[ERROR] file has more than one mesh named {mesh_data_name}, being conservative and terminating"
 
     # assign geometry to use the exported asset
-    xml_geom.set("mesh", "mesh_" + meshes_exported[obj.data])
+    xml_geom.set("mesh", "mesh_" + meshes_exported[unique_mesh])
 
 def export_options(context, xml_root): # TODO add lower priority options here and to the UI
     xml_compiler = SubElement(xml_root, "compiler")
@@ -472,11 +480,32 @@ def export_mesh_geom(context, obj, xml, xml_asset, visualization_only=False):
 
     export_stl(context, obj, xml_geom, xml_asset)
 
+
+def flipper(tf):
+    # TODO what the heck should be done here??????
+    # Trying to do the "householder transform?"
+    # flip before taking the relative tf?
+    # with a simple -Y scale all the dimensions are correct *except* for Y..
+    scl = Matrix.LocRotScale(Vector([0, 0, 0]), Quaternion([1, 0, 0, 0]), Vector([1, -1, 1]))
+    rot = Matrix.LocRotScale(Vector([0, 0, 0]), Quaternion([1, 0, 0, 0]), Vector([1, 1, 1]))
+    tf = tf @ rot @ scl
+    return tf
+    
+
 # exports xml data for a link entity
-def export_entity(context, obj, xml_model, body_is_root, xml_asset):
+def export_entity(context, obj, xml_model, body_is_root, xml_asset, flipit=False):
 
     if not body_is_root:
         tf = obj.sk_parent_entity.matrix_world.inverted_safe() @ obj.matrix_world
+
+        if tf.is_negative or flipit:
+            print(f"[WARN] {obj.name} has a negative relative transform")
+            print(f"{tf.to_scale()}")
+
+            tf = flipper(tf)
+
+            flipit = False
+
         pos = repr(tf.translation[0]) + " " + repr(tf.translation[1]) + " " + repr(tf.translation[2])
 
         # relative to the parent
@@ -537,6 +566,8 @@ def export_entity(context, obj, xml_model, body_is_root, xml_asset):
 
         # re-do the position calculation to allow for the multi-joint situations
         tf = parent_tmp.matrix_world.inverted_safe() @ obj.matrix_world
+        if flipit:
+            tf = flipper(tf)
         pos = repr(tf.translation[0]) + " " + repr(tf.translation[1]) + " " + repr(tf.translation[2])
 
         xml_entity.set("pos", pos)
@@ -570,7 +601,7 @@ def export_entity(context, obj, xml_model, body_is_root, xml_asset):
             xml_entity.set("armature", repr(obj.sk_joint_armature))
 
         for j, child in obj['sk_child_entity_list'].items():
-            export_entity(context, child, xml_model, False, xml_asset)
+            export_entity(context, child, xml_model, False, xml_asset, flipit)
 
     elif obj.enum_sk_type == "body":
         print(f"Exporting {obj.name} as BODY {obj}")
@@ -594,7 +625,7 @@ def export_entity(context, obj, xml_model, body_is_root, xml_asset):
                 export_mesh_geom(context, obj, xml_entity, xml_asset, visualization_only=True)
 
         for j, child in obj['sk_child_entity_list'].items():
-            export_entity(context, child, xml_entity, False, xml_asset)
+            export_entity(context, child, xml_entity, False, xml_asset, flipit)
 
     elif obj.enum_sk_type == "camera":
         export_camera(context, obj, xml_model)
