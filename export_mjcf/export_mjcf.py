@@ -38,7 +38,6 @@ class TFDisplay():
     def __init__(self):
         self.draw_handler = None
         self.dpupdate = None
-        # self.shader = gpu.shader.from_builtin('3D_SMOOTH_COLOR') # for Blender 3.x
 
     def tf_display_draw(self, scene):
         verts = []
@@ -46,6 +45,9 @@ class TFDisplay():
 
         color = mathutils.Color()
         color.hsv = (0, 1.0, 1.0)
+
+        if scene is None:
+            return
 
         for obj in scene.objects:
             if "tf_tree_children" in obj:
