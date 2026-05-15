@@ -39,7 +39,6 @@ class TFDisplay():
         self.draw_handler = None
         self.dpupdate = None
         # self.shader = gpu.shader.from_builtin('3D_SMOOTH_COLOR') # for Blender 3.x
-        self.shader = gpu.shader.from_builtin('POLYLINE_SMOOTH_COLOR') # for Blender 4.x
 
     def tf_display_draw(self, scene):
         verts = []
@@ -77,6 +76,7 @@ class TFDisplay():
     def init(self):
         #if bpy.context.scene.kinematic_tree_display:
         print("Display property changed, turning the tree ON")
+        self.shader = gpu.shader.from_builtin('POLYLINE_SMOOTH_COLOR') # for Blender 4.x
         self.dpupdate = bpy.app.handlers.depsgraph_update_pre.append(self.tf_display_update)
         #else:
         #    pass
@@ -494,7 +494,11 @@ def export_entity(context, obj, xml_model, body_is_root, xml_asset):
         xml_entity.set("quat", quat)
         xml_entity.set("mass", repr(obj.sk_mass))
 
-        xml_entity.set("rgba", "0.5 0.5 0.5 0.1")
+        if obj.sk_parent_entity == context.scene.root_previous:
+            xml_entity.set("rgba", "0.5 0.5 0.4 1.0")
+        else:
+            xml_entity.set("rgba", "0.5 0.5 0.5 0.1")
+            print("{obj.name} is a normal geom")
         xml_entity.set("contype", repr(obj.sk_contype))
         xml_entity.set("conaffinity", repr(obj.sk_conaffinity))
         #TODO rgba - color from parent body material first index

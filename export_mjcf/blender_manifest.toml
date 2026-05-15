@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "export_mjcf"
-version = "0.5.0"
+version = "0.5.1"
 name = "Export MJCF"
 tagline = "Export XML MJCF files for MuJoCo"
 maintainer = "Jay Jasper <jay-j@github.com>"
@@ -17,3 +17,8 @@ license = [
 
 [permissions]
 files = "Export MJCF files to disk"
+
+[build]
+paths = [
+  "."
+]
