@@ -500,7 +500,6 @@ def export_entity(context, obj, xml_model, body_is_root, xml_asset):
             xml_entity.set("rgba", "0.5 0.5 0.4 1.0")
         else:
             xml_entity.set("rgba", "0.5 0.5 0.5 0.1")
-            print("{obj.name} is a normal geom")
         xml_entity.set("contype", repr(obj.sk_contype))
         xml_entity.set("conaffinity", repr(obj.sk_conaffinity))
         #TODO rgba - color from parent body material first index
