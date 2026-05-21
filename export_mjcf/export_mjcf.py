@@ -286,7 +286,8 @@ def export_stl(context, obj, xml_geom, xml_asset):
 
         # restore selection
         bpy.ops.object.select_all(action='DESELECT')
-        sel_obj.select_set(True)
+        if sel_obj != None:
+            sel_obj.select_set(True)
 
         # if new asset have to do this and run the export
         xml_stl = SubElement(xml_asset, "mesh")
@@ -1019,11 +1020,12 @@ class SimpleKinematicsPanelQuickAccess(bpy.types.Panel):
             row.prop(context.scene, "kinematic_tree_autogen", text="auto")
             tree_button = box.operator("sk.export_mjcf_build_tree", text="Rebuild Tree Once")
 
-        box = layout.box()
-        box.label(text="This Object")
-        box.label(text=f"Type: {context.object.enum_sk_type}")
-        box.prop(context.object, "rotation_euler")
-        box.prop(context.object, "scale")
+        if context.object != None:
+            box = layout.box()
+            box.label(text="This Object")
+            box.label(text=f"Type: {context.object.enum_sk_type}")
+            box.prop(context.object, "rotation_euler")
+            box.prop(context.object, "scale")
 
 class SimpleKinematicsPanelMJCFOptions(bpy.types.Panel):
     bl_idname = "OBJECT_PT_sk_mjcfoptions"
