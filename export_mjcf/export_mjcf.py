@@ -127,7 +127,7 @@ def get_joints(obj):
         if child.enum_sk_type == "joint":
             joints.append(child)
 
-    assert len(joints) < 2, "too many child joints detected in TF tree build"
+    assert len(joints) < 2, f"TF tree build failure. Object {obj.name} has too many child joints: {joints}." 
     return joints
 
 def build_kinematic_tree(self, context):
