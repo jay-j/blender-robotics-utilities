@@ -19,6 +19,6 @@ license = [
 files = "Export MJCF files to disk"
 
 [build]
-paths = [
-  "."
+paths_exclude_pattern = [
+  "__pycache__/",
 ]
