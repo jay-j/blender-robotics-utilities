@@ -58,9 +58,10 @@ class TFDisplay():
                     colors.append( color[:] + (1.0,))
                     color.h = (color.h + 0.37) % 1.0
 
-        batch = batch_for_shader(self.shader, 'LINES', {"pos":verts, "color":colors})
-        self.shader.bind()
-        batch.draw(self.shader)
+        shader = gpu.shader.from_builtin('POLYLINE_SMOOTH_COLOR')
+        batch = batch_for_shader(shader, 'LINES', {"pos":verts, "color":colors})
+        shader.bind()
+        batch.draw(shader)
 
     @persistent
     def tf_display_update(self, scene, unknown):
@@ -78,7 +79,6 @@ class TFDisplay():
     def init(self):
         #if bpy.context.scene.kinematic_tree_display:
         print("Display property changed, turning the tree ON")
-        self.shader = gpu.shader.from_builtin('POLYLINE_SMOOTH_COLOR') # for Blender 4.x
         self.dpupdate = bpy.app.handlers.depsgraph_update_pre.append(self.tf_display_update)
         #else:
         #    pass
