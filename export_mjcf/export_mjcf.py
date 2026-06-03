@@ -593,6 +593,9 @@ def export_entity(context, obj, xml_model, body_is_root, xml_asset):
             xml_entity.set("pos", pos)
             xml_entity.set("quat", quat)
 
+            if obj.sk_body_mocap:
+                xml_entity.set("mocap", repr(obj.sk_body_mocap).lower())
+
             # always export a STL mesh, but only let it be the physics geom
             if not obj.sk_use_primitive_geom:
                 export_mesh_geom(context, obj, xml_entity, xml_asset, visualization_only=False)
@@ -752,7 +755,15 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
 
             if obj.sk_use_primitive_geom:
                 row = layout.row()
-                row.label(text="Derived Mass (kg): TODO") # if body is to built of geoms, then those should drive the mass
+                mass = 0
+
+                for _, child in context.scene.objects[obj.name]['sk_child_entity_list'].items():
+                    print(f"child = {child}")
+                    if child.enum_sk_type == 'geom':
+                        mass += child.sk_mass
+
+                # Bodies built of geoms derive their inertial properties from those geoms
+                row.label(text=f"Mass, total from geoms (kg): {mass}")
 
             else:
                 row = layout.row()
@@ -761,6 +772,10 @@ class SimpleKinematicsJointPanel(bpy.types.Panel):
                 row = layout.row()
                 row.prop(obj, "sk_contype")
                 row.prop(obj, "sk_conaffinity")
+
+            row = layout.row()
+            row.prop(obj, "sk_body_mocap", text = "Is Mocap Body")
+
 
         if obj.enum_sk_type == "geom":
             if obj.type != "EMPTY":
@@ -1190,6 +1205,7 @@ def register():
     bpy.types.Object.sk_geom_type = bpy.props.EnumProperty(items=enum_geom_type_options)
     bpy.types.Object.sk_contype = bpy.props.IntProperty(name="sk_contype", default=1)
     bpy.types.Object.sk_conaffinity = bpy.props.IntProperty(name="sk_conaffinity", default=1)
+    bpy.types.Object.sk_body_mocap = bpy.props.BoolProperty(name="body is mocap", default=False, description="mocap bodies accept kinematic assignment mjData.mocap_{pos,quat} but are considered static by the dynamics solver")
 
     # Joint Properties
     bpy.types.Object.enum_joint_type = bpy.props.EnumProperty(items=enum_joint_type_options)

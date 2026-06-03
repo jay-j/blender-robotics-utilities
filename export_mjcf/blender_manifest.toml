@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "export_mjcf"
-version = "0.5.1"
+version = "0.5.2"
 name = "Export MJCF"
 tagline = "Export XML MJCF files for MuJoCo"
 maintainer = "Jay Jasper <jay-j@github.com>"
